@@ -30,6 +30,7 @@ import api from "../../api/axios";
 import LiveTerminal from "./SiteApp/LiveTerminal";
 import SiteInstalledApps from "./SiteApp/LiveRecommendedApps";
 import SiteTopology from "./SiteApp/SiteTopology";
+import SiteHealth from "./SiteApp/SiteHealth";
 
 // Catalog aplikasi bawaan
 const AVAILABLE_APPS = [
@@ -396,7 +397,7 @@ export default function SitesPage() {
                     connStatus={connStatus[site.id]}
                     onRecheck={() => checkSiteConnection(site.id)}
                   />
-                  <SiteHealth s={site} />
+                  <SiteHealth site={site} />
                 </>
               )}
             </div>
@@ -900,111 +901,6 @@ function generateDummyHealth(siteId) {
       uptime: `${rand(1, 60, 6)}d ${rand(0, 23, 7)}h`
     }
   };
-}
-
-// --- SITE HEALTH CARD (CPU, Memory, Internal Storage, Network, OS Detail) ---
-function SiteHealth({ s }) {
-  const navigate = useNavigate();
-  const health = useMemo(() => generateDummyHealth(s?.id), [s?.id]);
-
-  const metrics = [
-    { key: "cpu", label: "CPU", value: health.cpu, icon: Cpu },
-    { key: "memory", label: "Memory", value: health.memory, icon: MemoryStick },
-    { key: "storage", label: "Internal Storage", value: health.storage, icon: HardDrive }
-  ];
-
-  const barColor = (value) =>
-    value >= 85 ? "bg-rose-500" : value >= 65 ? "bg-amber-500" : "bg-emerald-500";
-
-  const handleGoToFirewall = () => {
-    if (!s?.id) return;
-    navigate(`/firewall/${s.id}`);
-  };
-
-  return (
-    <div className="bg-[#0b0f17] border border-slate-800/80 rounded-xl p-5 shadow-xl space-y-4">
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800/60">
-        <div>
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-            Site Health
-          </h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            Resource usage & system information (dummy data)
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={handleGoToFirewall}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-800 bg-[#0e1420] hover:bg-[#141d2d] text-[11px] font-medium text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-          Setting Firewall
-        </button>
-      </div>
-
-      {/* CPU / MEMORY / STORAGE BARS */}
-      <div className="space-y-3">
-        {metrics.map((m) => {
-          const Icon = m.icon;
-          return (
-            <div key={m.key}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                  <Icon className="w-3.5 h-3.5 text-slate-500" />
-                  {m.label}
-                </span>
-                <span className="text-[11px] font-mono text-slate-300">{m.value}%</span>
-              </div>
-              <div className="w-full h-1.5 rounded-full bg-slate-800/80 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${barColor(m.value)}`}
-                  style={{ width: `${m.value}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-
-        {/* NETWORK */}
-        <div className="flex items-center justify-between p-2.5 rounded-lg border border-slate-800/60 bg-[#0e1420]">
-          <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
-            <Network className="w-3.5 h-3.5 text-slate-500" />
-            Network
-          </span>
-          <span className="text-[11px] font-mono text-slate-300">
-            ↑ {health.network.up} Mbps · ↓ {health.network.down} Mbps
-          </span>
-        </div>
-      </div>
-
-      {/* OS DETAIL */}
-      <div className="pt-1">
-        <span className="text-[11px] text-slate-500 block mb-1.5">OS Detail:</span>
-        <div className="grid grid-cols-2 gap-2 text-[11px] font-mono bg-[#080c13] p-3 rounded-lg border border-slate-800/60">
-          <div>
-            <span className="text-slate-500 block">OS</span>
-            <span className="text-slate-200">{health.os.name}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 block">Version</span>
-            <span className="text-slate-200">{health.os.version}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 block">Kernel</span>
-            <span className="text-slate-200">{health.os.kernel}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 block">Arch</span>
-            <span className="text-slate-200">{health.os.arch}</span>
-          </div>
-          <div className="col-span-2">
-            <span className="text-slate-500 block">Uptime</span>
-            <span className="text-slate-200">{health.os.uptime}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function TerminalConsole({ site, connStatus }) {

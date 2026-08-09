@@ -49,7 +49,7 @@ function App() {
         <Route path="canvas" element={<Canvas />} />
         <Route path="routing" element={<Routing />} /> */}
           <Route path="settings/members" element={<MemberScreen />} />
-          <Route path="settings/security" element={<FirewallSecurity />} />
+          <Route path="firewall/:id" element={<FirewallSecurity />} />
           <Route path="settings/license" element={<LicenseManagement />} />
 
           <Route path="dashboard" element={<DashboardPrimacom />} />

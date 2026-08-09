@@ -10,8 +10,11 @@ import {
   RefreshCw
 } from 'lucide-react';
 import api from '../../api/axios';
+import { useNavigate, useParams } from 'react-router-dom';
 
 const FirewallSecurity = () => {
+  const { id } = useParams();
+  const navigate = useNavigate(); 
 
   // State Khusus Firewall Security
   const [fwRules, setFwRules] = useState([]);
@@ -32,11 +35,11 @@ const FirewallSecurity = () => {
     setFwLoading(true);
     try {
       // 1. Cek Status ON/OFF
-      const statusRes = await api.get(`/primacom/firewall-status`);
-      setIsFwActive(statusRes.data.is_active);
+      const statusRes = await api.get(`/site/firewall/status/${id}`);
+      setIsFwActive(statusRes.data.ufwStatus);
 
       // 2. Cek List Rules Berformat JSON
-      const rulesRes = await api.get(`/primacom/firewall/rules`);
+      const rulesRes = await api.get(`/site/firewall/rules/${id}`);
 
       if (rulesRes.data && Array.isArray(rulesRes.data.rules_list)) {
         setFwRules(rulesRes.data.rules_list);
@@ -59,7 +62,7 @@ const FirewallSecurity = () => {
   const handleToggleFirewall = async () => {
     try {
       const targetStatus = !isFwActive;
-      await api.put(`/primacom/firewall/toggle?enable=${targetStatus}`);
+      await api.put(`/site/firewall/toggle/${id}?enable=${targetStatus}`);
       setIsFwActive(targetStatus);
       fetchFirewallData();
     } catch (err) {
@@ -75,7 +78,7 @@ const FirewallSecurity = () => {
       return;
     }
 
-    const endpoint = `/primacom/firewall/${newRule.action}`;
+    const endpoint = `/site/firewall/${newRule.action}/${id}`;
     try {
       await api.post(endpoint, {
         port: newRule.port || null,
@@ -92,10 +95,10 @@ const FirewallSecurity = () => {
   };
 
   // Handler Hapus Aturan berdasarkan ID/Nomor urut UFW
-  const handleDeleteRule = async (id) => {
-    if (window.confirm(`Apakah Anda yakin ingin menghapus aturan nomor [${id}]?`)) {
+  const handleDeleteRule = async (ids) => {
+    if (window.confirm(`Apakah Anda yakin ingin menghapus aturan nomor [${ids}]?`)) {
       try {
-        await api.delete(`/primacom/firewall/rules/${id}`);
+        await api.delete(`/site/firewall/rules/${ids}/${id}`);
         fetchFirewallData();
       } catch (err) {
         alert("Gagal menghapus aturan.");
