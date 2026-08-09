@@ -57,7 +57,7 @@ function Sidebar() {
       items: [
         { name: "Tenants", path: "/tenants", icon: Users, permissionKey: "tenant" },
         { name: "Lisensi", path: "/settings/license", icon: ShieldCheck, permissionKey: "rbac" },
-        { name: "Audit Log", path: "/rbac", icon: ShieldCheck, permissionKey: "rbac" },
+        { name: "Audit Log", path: "/auditlog", icon: ShieldCheck, permissionKey: "auditlog" },
         { name: "Settings", path: "/settings", icon: Settings, permissionKey: "settings" },
       ],
     },

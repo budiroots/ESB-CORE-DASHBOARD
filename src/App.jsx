@@ -23,6 +23,7 @@ import MemberScreen from "./pages/main/MemberScreen";
 import FirewallSecurity from "./pages/main/SecurityScreen";
 import LicenseManagement from "./pages/main/LicenseScreen";
 import { TenantProvider } from "./context/TenantContext";
+import AuditTrailPage from "./pages/main/AuditScreen";
 // import MultiTenantApp from "./pages/primacom/HomePrimacom";
 
 function App() {
@@ -62,6 +63,8 @@ function App() {
           <Route path="marketplace" element={<MarketplaceScreen />} />
 
           <Route path="rbac" element={<RbacScreen />} />
+          <Route path="auditlog" element={<AuditTrailPage />} />
+
           <Route path="tenants" element={<TenantsScreen />} />
           <Route path="settings" element={<SettingsScreen />} />
 

@@ -3,7 +3,7 @@ import { BaseUrlBB, BaseUrlItacha, BaseUrl, BaseUrlTest } from "./apiservice";
 
 
 const api = axios.create({
-  baseURL: BaseUrl,
+  baseURL: BaseUrlTest,
 });
 
 // 🔥 REQUEST INTERCEPTOR (auto bearer)
