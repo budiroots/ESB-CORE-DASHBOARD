@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Server,
   Plus,
   Activity,
   HardDrive,
   Cpu,
+  MemoryStick,
   Layers,
   Network,
   Pencil,
@@ -25,8 +27,9 @@ import {
 } from "lucide-react";
 import { useTenant } from "../../context/TenantContext";
 import api from "../../api/axios";
-import LiveTerminal from "./LiveTerminal";
-import RecommendedAppsSection from "./LiveRecommendedApps";
+import LiveTerminal from "./SiteApp/LiveTerminal";
+import SiteInstalledApps from "./SiteApp/LiveRecommendedApps";
+import SiteTopology from "./SiteApp/SiteTopology";
 
 // Catalog aplikasi bawaan
 const AVAILABLE_APPS = [
@@ -111,12 +114,24 @@ export default function SitesPage() {
   // shape per entry: { status: 'checking' | 'connected' | 'disconnected', message: string, lastChecked: Date }
   const [connStatus, setConnStatus] = useState({});
 
+  // Menandai tenant mana yang sudah dilakukan initial full-connection-check,
+  // supaya sweep semua site hanya jalan sekali per tenant (bukan tiap fetchSites dipanggil ulang).
+  const checkedTenantRef = useRef(null);
+
   // --- FETCH SITES (READ) ---
   const fetchSites = async () => {
     setLoading(true);
     try {
       const response = await api.get(`/site/${tenantId || ''}`);
-      setSites(response.data.data);
+      const data = response.data.data || [];
+      setSites(data);
+
+      // Saat page pertama kali dibuka (atau tenant berganti), cek koneksi SEMUA site
+      // satu per satu agar dari awal sudah ketahuan mana yang tidak terkoneksi.
+      if (checkedTenantRef.current !== tenantId && data.length > 0) {
+        checkedTenantRef.current = tenantId;
+        checkAllSitesConnections(data);
+      }
     } catch (error) {
       console.error("Gagal mengambil data site:", error);
     } finally {
@@ -164,6 +179,19 @@ export default function SitesPage() {
           lastChecked: new Date()
         }
       }));
+    }
+  };
+
+  // --- CHECK CONNECTION SEMUA SITE SATU-PER-SATU (dipanggil saat page pertama dibuka) ---
+  const checkAllSitesConnections = async (siteList) => {
+    for (const s of siteList) {
+      if (!s?.id) continue;
+      // eslint-disable-next-line no-await-in-loop
+      await checkSiteConnection(s.id);
+      // Jeda kecil antar pengecekan supaya tidak membanjiri backend sekaligus
+      // dan status di UI terlihat "mengalir" diperbarui satu per satu.
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, 250));
     }
   };
 
@@ -353,36 +381,33 @@ export default function SitesPage() {
         <>
           <div className="grid grid-cols-12 gap-5">
             {/* Topology View Column */}
-            <div className="col-span-12 lg:col-span-7 bg-[#0b0f17] border border-slate-800/80 rounded-xl p-5 shadow-xl">
-              <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-800/60">
-                <div>
-                  <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    Site Topology
-                  </h2>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Central Hubs (Left) connected to Branch Spokes (Right)
-                  </p>
-                </div>
-              </div>
-              <Topology sites={sites} picked={picked} onPick={setPicked} />
+            <div className="col-span-12 lg:col-span-7">
+              <SiteTopology sites={sites} picked={picked} onPick={setPicked} connStatus={connStatus} />
             </div>
 
             {/* Site Detail View Column */}
             <div className="col-span-12 lg:col-span-5 space-y-5">
               {site && (
-                <SiteDetail
-                  s={site}
-                  onEdit={() => handleOpenEditModal(site)}
-                  onDelete={() => handleDeleteSite(site.id)}
-                  connStatus={connStatus[site.id]}
-                  onRecheck={() => checkSiteConnection(site.id)}
-                />
+                <>
+                  <SiteDetail
+                    s={site}
+                    onEdit={() => handleOpenEditModal(site)}
+                    onDelete={() => handleDeleteSite(site.id)}
+                    connStatus={connStatus[site.id]}
+                    onRecheck={() => checkSiteConnection(site.id)}
+                  />
+                  <SiteHealth s={site} />
+                </>
               )}
             </div>
           </div>
 
           {/* APPS & TERMINAL ROW */}
-          <div className="pt-2">
+          <div className="grid grid-cols-12 gap-5 pt-2">
+            {/* INSTALLED APPS (dummy) */}
+            <div className="col-span-12 lg:col-span-6">
+              <SiteInstalledApps site={site} />
+            </div>
 
             {/* LIVE TERMINAL ACCESS */}
             <div className="col-span-12 lg:col-span-6 bg-[#0b0f17] border border-slate-800/80 rounded-xl p-5 shadow-xl flex flex-col">
@@ -754,69 +779,6 @@ function StatCard({ label, value, hint, icon }) {
   );
 }
 
-function Topology({ sites, picked, onPick }) {
-  const hqSites = sites.filter(s => s.kind === 0);
-  const branchSites = sites.filter(s => s.kind !== 0);
-
-  return (
-    <div className="grid grid-cols-2 gap-8 py-4 relative min-h-[220px]">
-      {/* Central Hubs Column */}
-      <div className="space-y-3">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2 font-mono">Central Hubs</span>
-        {hqSites.length === 0 ? (
-          <div className="p-4 border border-dashed border-slate-800 rounded-xl text-[11px] text-slate-600 text-center">
-            No Central Hub
-          </div>
-        ) : (
-          hqSites.map(s => (
-            <div
-              key={s.id}
-              onClick={() => onPick(s.id)}
-              className={`p-3.5 rounded-xl border transition-all cursor-pointer ${picked === s.id
-                ? "bg-blue-950/40 border-blue-500/80 shadow-lg shadow-blue-500/10"
-                : "bg-[#0e1420] border-slate-800 hover:border-slate-700"
-                }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-white">{s.name}</span>
-                <span className="text-[9px] bg-blue-900/50 text-blue-300 border border-blue-700/40 px-1.5 py-0.5 rounded font-mono">HQ</span>
-              </div>
-              <span className="text-[10.5px] font-mono text-slate-400 mt-1 block">{s.endpoint}</span>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Spokes Column */}
-      <div className="space-y-3">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2 font-mono font-bold">Branch Spokes</span>
-        {branchSites.length === 0 ? (
-          <div className="p-4 border border-dashed border-slate-800 rounded-xl text-[11px] text-slate-600 text-center">
-            No Spoke Sites
-          </div>
-        ) : (
-          branchSites.map(s => (
-            <div
-              key={s.id}
-              onClick={() => onPick(s.id)}
-              className={`p-3.5 rounded-xl border transition-all cursor-pointer ${picked === s.id
-                ? "bg-blue-950/40 border-blue-500/80 shadow-lg shadow-blue-500/10"
-                : "bg-[#0e1420] border-slate-800 hover:border-slate-700"
-                }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-white">{s.name}</span>
-                <span className="text-[9px] bg-slate-800 text-slate-300 border border-slate-700 px-1.5 py-0.5 rounded font-mono">{s.kind}</span>
-              </div>
-              <span className="text-[10.5px] font-mono text-slate-400 mt-1 block">{s.endpoint}</span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
 function SiteDetail({ s, onEdit, onDelete, connStatus, onRecheck }) {
   const status = connStatus?.status || "checking";
 
@@ -902,6 +864,143 @@ function SiteDetail({ s, onEdit, onDelete, connStatus, onRecheck }) {
           <p className="text-slate-400 bg-[#080c13] p-2 rounded border border-slate-800/60 text-[11px]">
             {s.desc || "Tidak ada deskripsi."}
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- DUMMY HEALTH DATA GENERATOR ---
+// Deterministik berdasarkan site.id supaya angkanya tidak berubah-ubah setiap render,
+// tapi tetap berbeda antar site. Ganti dengan data asli dari backend saat sudah siap.
+function generateDummyHealth(siteId) {
+  const seed = String(siteId || "default")
+    .split("")
+    .reduce((acc, c) => acc + c.charCodeAt(0), 0) || 1;
+
+  const rand = (min, max, salt = 0) => {
+    const x = Math.sin(seed + salt) * 10000;
+    const frac = x - Math.floor(x);
+    return Math.round(min + frac * (max - min));
+  };
+
+  return {
+    cpu: rand(15, 92, 1),
+    memory: rand(25, 88, 2),
+    storage: rand(10, 95, 3),
+    network: {
+      up: rand(1, 120, 4),
+      down: rand(5, 480, 5)
+    },
+    os: {
+      name: "Ubuntu Server",
+      version: "22.04.3 LTS",
+      kernel: "5.15.0-91-generic",
+      arch: "x86_64",
+      uptime: `${rand(1, 60, 6)}d ${rand(0, 23, 7)}h`
+    }
+  };
+}
+
+// --- SITE HEALTH CARD (CPU, Memory, Internal Storage, Network, OS Detail) ---
+function SiteHealth({ s }) {
+  const navigate = useNavigate();
+  const health = useMemo(() => generateDummyHealth(s?.id), [s?.id]);
+
+  const metrics = [
+    { key: "cpu", label: "CPU", value: health.cpu, icon: Cpu },
+    { key: "memory", label: "Memory", value: health.memory, icon: MemoryStick },
+    { key: "storage", label: "Internal Storage", value: health.storage, icon: HardDrive }
+  ];
+
+  const barColor = (value) =>
+    value >= 85 ? "bg-rose-500" : value >= 65 ? "bg-amber-500" : "bg-emerald-500";
+
+  const handleGoToFirewall = () => {
+    if (!s?.id) return;
+    navigate(`/firewall/${s.id}`);
+  };
+
+  return (
+    <div className="bg-[#0b0f17] border border-slate-800/80 rounded-xl p-5 shadow-xl space-y-4">
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800/60">
+        <div>
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+            Site Health
+          </h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Resource usage & system information (dummy data)
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleGoToFirewall}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-800 bg-[#0e1420] hover:bg-[#141d2d] text-[11px] font-medium text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+          Setting Firewall
+        </button>
+      </div>
+
+      {/* CPU / MEMORY / STORAGE BARS */}
+      <div className="space-y-3">
+        {metrics.map((m) => {
+          const Icon = m.icon;
+          return (
+            <div key={m.key}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                  <Icon className="w-3.5 h-3.5 text-slate-500" />
+                  {m.label}
+                </span>
+                <span className="text-[11px] font-mono text-slate-300">{m.value}%</span>
+              </div>
+              <div className="w-full h-1.5 rounded-full bg-slate-800/80 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${barColor(m.value)}`}
+                  style={{ width: `${m.value}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+
+        {/* NETWORK */}
+        <div className="flex items-center justify-between p-2.5 rounded-lg border border-slate-800/60 bg-[#0e1420]">
+          <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <Network className="w-3.5 h-3.5 text-slate-500" />
+            Network
+          </span>
+          <span className="text-[11px] font-mono text-slate-300">
+            ↑ {health.network.up} Mbps · ↓ {health.network.down} Mbps
+          </span>
+        </div>
+      </div>
+
+      {/* OS DETAIL */}
+      <div className="pt-1">
+        <span className="text-[11px] text-slate-500 block mb-1.5">OS Detail:</span>
+        <div className="grid grid-cols-2 gap-2 text-[11px] font-mono bg-[#080c13] p-3 rounded-lg border border-slate-800/60">
+          <div>
+            <span className="text-slate-500 block">OS</span>
+            <span className="text-slate-200">{health.os.name}</span>
+          </div>
+          <div>
+            <span className="text-slate-500 block">Version</span>
+            <span className="text-slate-200">{health.os.version}</span>
+          </div>
+          <div>
+            <span className="text-slate-500 block">Kernel</span>
+            <span className="text-slate-200">{health.os.kernel}</span>
+          </div>
+          <div>
+            <span className="text-slate-500 block">Arch</span>
+            <span className="text-slate-200">{health.os.arch}</span>
+          </div>
+          <div className="col-span-2">
+            <span className="text-slate-500 block">Uptime</span>
+            <span className="text-slate-200">{health.os.uptime}</span>
+          </div>
         </div>
       </div>
     </div>

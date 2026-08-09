@@ -2,8 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { BaseUrlHub } from '../../api/apiservice';
-import RecommendedAppsSection from './LiveRecommendedApps';
+import { BaseUrlHub } from '../../../api/apiservice';
 
 export default function RealSshTerminal(sites) {
     const site = sites.siteId;
@@ -87,9 +86,6 @@ export default function RealSshTerminal(sites) {
                 <span>Site: <strong className="text-sky-400">{site?.name}</strong></span>
             </div>
             <div className="h-[500px] w-full" ref={terminalRef} />
-            
-            {/* Component Floating Button & Modal Overlay */}
-            <RecommendedAppsSection site={site} wsRef={wsRef} />
         </div>
     );
 }
