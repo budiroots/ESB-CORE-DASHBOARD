@@ -1,19 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ChevronLeft,
   LayoutGrid,
   Terminal as TerminalIcon,
   Activity,
-  FileText,
   ShieldCheck,
   Settings,
   Loader2,
   Plus,
   X,
-  RotateCw,
-  Power,
-  Trash2
+  RefreshCw,
+  Trash2,
+  Copy,
+  Check,
+  AlertTriangle
 } from "lucide-react";
 import { useTenant } from "../../../context/TenantContext";
 import api from "../../../api/axios";
@@ -31,21 +32,62 @@ const TABS = [
   { id: "maintenance", label: "Maintenance", icon: Settings }
 ];
 
-// Modul default yang selalu terpasang pada sebuah pEdge node
-const DEFAULT_MODULES = [
-  { id: "java", name: "Java OpenJDK 17", version: "17 LTS", letter: "J", color: "amber", status: "installed", cpu: null, mem: null },
-  { id: "camel", name: "Apache Camel", version: "4.5.0", letter: "C", color: "blue", status: "running", cpu: 5.4, mem: 340 },
-  { id: "docker", name: "Docker Engine", version: "24.0+", letter: "D", color: "cyan", status: "running", cpu: 3.2, mem: 210 },
-  { id: "kafka", name: "Apache Kafka", version: "3.7.0", letter: "K", color: "purple", status: "running", cpu: 8.1, mem: 512 }
-];
-
-// Katalog tambahan yang bisa dipasang lewat tombol "Add Module"
-const MODULE_CATALOG = [
-  { id: "mongodb", name: "MongoDB", version: "7.0", letter: "M", color: "emerald" },
-  { id: "redis", name: "Redis", version: "7.2", letter: "R", color: "rose" },
-  { id: "nginx", name: "Nginx", version: "1.25", letter: "N", color: "teal" },
-  { id: "postgres", name: "PostgreSQL", version: "16", letter: "P", color: "sky" }
-];
+// Modul inti yang dicek langsung ke node via endpoint:
+// GET /installedapp/{id}/common?apps=docker, java, jbang, kafka, mongodb, nodejs, pm2, postgresql
+// -> { data: [{ name, installed, version, path, rawOutput }] }
+const MODULE_META = {
+  docker: {
+    name: "Docker Engine",
+    letter: "D",
+    color: "cyan",
+    command: "curl -fsSL https://get.docker.com | sh && sudo usermod -aG docker $USER"
+  },
+  java: {
+    name: "Java OpenJDK 17",
+    letter: "J",
+    color: "amber",
+    command: "sudo apt-get update && sudo apt-get install -y openjdk-17-jdk"
+  },
+  jbang: {
+    name: "Apache Camel (JBang)",
+    letter: "C",
+    color: "blue",
+    command: "curl -Ls https://sh.jbang.dev | bash -s - app setup"
+  },
+  kafka: {
+    name: "Apache Kafka",
+    letter: "K",
+    color: "purple",
+    command:
+      "wget https://downloads.apache.org/kafka/3.7.0/kafka_2.13-3.7.0.tgz && tar -xzf kafka_2.13-3.7.0.tgz && mv kafka_2.13-3.7.0 /opt/kafka"
+  },
+  mongodb: {
+    name: "MongoDB",
+    letter: "M",
+    color: "emerald",
+    command:
+      'curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor && echo "deb [signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list && sudo apt-get update && sudo apt-get install -y mongodb-org'
+  },
+  nodejs: {
+    name: "Node.js",
+    letter: "N",
+    color: "lime",
+    command: "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"
+  },
+  pm2: {
+    name: "PM2 Process Manager",
+    letter: "P",
+    color: "orange",
+    command: "sudo npm install -g pm2"
+  },
+  postgresql: {
+    name: "PostgreSQL",
+    letter: "Pg",
+    color: "sky",
+    command: "sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib"
+  }
+};
+const MODULE_APP_IDS = Object.keys(MODULE_META);
 
 const COLOR_STYLES = {
   amber: "bg-amber-500/15 text-amber-400 border-amber-800/40",
@@ -53,8 +95,8 @@ const COLOR_STYLES = {
   cyan: "bg-cyan-500/15 text-cyan-400 border-cyan-800/40",
   purple: "bg-purple-500/15 text-purple-400 border-purple-800/40",
   emerald: "bg-emerald-500/15 text-emerald-400 border-emerald-800/40",
-  rose: "bg-rose-500/15 text-rose-400 border-rose-800/40",
-  teal: "bg-teal-500/15 text-teal-400 border-teal-800/40",
+  lime: "bg-lime-500/15 text-lime-400 border-lime-800/40",
+  orange: "bg-orange-500/15 text-orange-400 border-orange-800/40",
   sky: "bg-sky-500/15 text-sky-400 border-sky-800/40"
 };
 
@@ -63,7 +105,7 @@ const COLOR_STYLES = {
  * (SitesScreen -> SiteDetail) menuju rute /setting/:id.
  *
  * Struktur mengikuti desain: header node + tab (pEdge Module, Terminal,
- * Monitoring, Logs, Security, Maintenance).
+ * Monitoring, Security, Maintenance).
  */
 export default function SiteSettingScreen() {
   const { id } = useParams();
@@ -76,10 +118,12 @@ export default function SiteSettingScreen() {
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("module");
 
-  // --- MODULE MANAGEMENT (dummy/local state, belum ada endpoint backend) ---
-  const [modules, setModules] = useState(DEFAULT_MODULES);
+  // --- CEK MODUL TERPASANG (real check via SSH, endpoint /installedapp) ---
+  const [checkedApps, setCheckedApps] = useState([]);
+  const [modulesLoading, setModulesLoading] = useState(true);
+  const [modulesError, setModulesError] = useState(null);
   const [isAddModuleOpen, setIsAddModuleOpen] = useState(false);
-  const [pendingModuleId, setPendingModuleId] = useState(null);
+  const [copiedId, setCopiedId] = useState(null);
 
   // --- AMBIL DATA NODE YANG DIPILIH ---
   useEffect(() => {
@@ -140,6 +184,30 @@ export default function SiteSettingScreen() {
     };
   }, [id]);
 
+  // --- CEK MODUL YANG SUDAH TERPASANG DI NODE (docker, java, jbang, kafka) ---
+  const checkInstalledModules = useCallback(async () => {
+    if (!id) return;
+
+    setModulesLoading(true);
+    setModulesError(null);
+    try {
+      const response = await api.get(`/installedapp/${id}/common`, {
+        params: { apps: MODULE_APP_IDS.join(", ") }
+      });
+      setCheckedApps(response.data?.data || []);
+    } catch (error) {
+      console.error("Gagal memeriksa modul terpasang:", error);
+      setCheckedApps([]);
+      setModulesError(error?.response?.data?.message || "Gagal memeriksa modul terpasang pada node.");
+    } finally {
+      setModulesLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    checkInstalledModules();
+  }, [checkInstalledModules]);
+
   const toggleTerminal = () => setIsTerminalOpen((prev) => !prev);
 
   // --- DELETE SITE (metode sama seperti SiteDetail di SitesScreen.jsx) ---
@@ -154,59 +222,34 @@ export default function SiteSettingScreen() {
     }
   };
 
-  // --- MODULE ACTIONS (local-only, endpoint asli menyusul) ---
-  const handleModuleAction = (moduleId, action) => {
-    if (action === "uninstall") {
-      if (!window.confirm("Copot modul ini dari node?")) return;
-      setModules((prev) => prev.filter((m) => m.id !== moduleId));
-      return;
-    }
-
-    if (action === "stop") {
-      setModules((prev) =>
-        prev.map((m) => (m.id === moduleId ? { ...m, status: "stopped", cpu: null, mem: null } : m))
-      );
-      return;
-    }
-
-    if (action === "start") {
-      setModules((prev) =>
-        prev.map((m) =>
-          m.id === moduleId ? { ...m, status: "running", cpu: +(Math.random() * 10 + 1).toFixed(1), mem: Math.round(Math.random() * 400 + 100) } : m
-        )
-      );
-      return;
-    }
-
-    if (action === "restart") {
-      setPendingModuleId(moduleId);
-      setModules((prev) => prev.map((m) => (m.id === moduleId ? { ...m, status: "restarting" } : m)));
-      setTimeout(() => {
-        setModules((prev) =>
-          prev.map((m) =>
-            m.id === moduleId ? { ...m, status: "running", cpu: +(Math.random() * 10 + 1).toFixed(1), mem: Math.round(Math.random() * 400 + 100) } : m
-          )
-        );
-        setPendingModuleId(null);
-      }, 900);
+  const handleCopyCommand = async (moduleId, command) => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedId(moduleId);
+      setTimeout(() => setCopiedId((prev) => (prev === moduleId ? null : prev)), 1500);
+    } catch (error) {
+      console.error("Gagal menyalin command:", error);
     }
   };
 
-  const handleInstallModule = (catalogItem) => {
-    setModules((prev) => [
-      ...prev,
-      {
-        ...catalogItem,
-        status: "running",
-        cpu: +(Math.random() * 10 + 1).toFixed(1),
-        mem: Math.round(Math.random() * 400 + 100)
-      }
-    ]);
-    setIsAddModuleOpen(false);
-  };
-
-  const installedIds = modules.map((m) => m.id);
-  const availableCatalog = MODULE_CATALOG.filter((c) => !installedIds.includes(c.id));
+  // Gabungkan metadata tampilan (nama/warna) dengan hasil cek real dari backend.
+  const moduleComposition = MODULE_APP_IDS.map((appId) => {
+    const meta = MODULE_META[appId];
+    const check = checkedApps.find((a) => a.name === appId);
+    return {
+      id: appId,
+      name: meta.name,
+      letter: meta.letter,
+      color: meta.color,
+      command: meta.command,
+      installed: !!check?.installed,
+      version: check?.version || null,
+      path: check?.path || null
+    };
+  });
+  // Modul yang belum terpasang (installed: false) tidak ditampilkan di tabel utama —
+  // cukup terlihat di modal "Add Module" supaya kelihatan komposisinya.
+  const installedModules = moduleComposition.filter((m) => m.installed);
 
   const badgeConfig = {
     connected: { label: "Connected", dot: "bg-emerald-500", text: "text-emerald-400" },
@@ -271,7 +314,19 @@ export default function SiteSettingScreen() {
           <div className="pt-1">
             {activeTab === "module" && (
               <div className="space-y-4">
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={checkInstalledModules}
+                    disabled={modulesLoading}
+                    title="Recheck modules"
+                    className="flex items-center justify-center w-8 h-8 rounded-lg border border-slate-800 bg-[#0e1420] hover:bg-[#141d2d] text-slate-300 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {modulesLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    )}
+                  </button>
                   <button
                     onClick={() => setIsAddModuleOpen(true)}
                     className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-md shadow-blue-600/20 transition-all cursor-pointer"
@@ -287,23 +342,27 @@ export default function SiteSettingScreen() {
                     <div className="col-span-4">Module</div>
                     <div className="col-span-2">Version</div>
                     <div className="col-span-2">Status</div>
-                    <div className="col-span-2">Resource Usage</div>
+                    <div className="col-span-2">Path</div>
                     <div className="col-span-2 text-right">Actions</div>
                   </div>
 
-                  {modules.length === 0 ? (
+                  {modulesLoading ? (
+                    <div className="py-12 text-center flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+                      <p className="text-xs text-slate-500">Memeriksa modul terpasang via SSH...</p>
+                    </div>
+                  ) : modulesError ? (
+                    <div className="py-12 text-center flex flex-col items-center justify-center gap-2 px-5">
+                      <AlertTriangle className="w-5 h-5 text-rose-400" />
+                      <p className="text-xs text-rose-400">{modulesError}</p>
+                    </div>
+                  ) : installedModules.length === 0 ? (
                     <div className="py-12 text-center text-xs text-slate-500">
-                      Belum ada modul terpasang pada node ini.
+                      Belum ada modul terpasang pada node ini. Klik{" "}
+                      <span className="text-blue-400">Add Module</span> untuk melihat pilihan yang tersedia.
                     </div>
                   ) : (
-                    modules.map((m) => (
-                      <ModuleRow
-                        key={m.id}
-                        module={m}
-                        isBusy={pendingModuleId === m.id}
-                        onAction={(action) => handleModuleAction(m.id, action)}
-                      />
-                    ))
+                    installedModules.map((m) => <ModuleRow key={m.id} module={m} />)
                   )}
                 </div>
               </div>
@@ -385,7 +444,7 @@ export default function SiteSettingScreen() {
         </div>
       )}
 
-      {/* MODAL ADD MODULE */}
+      {/* MODAL ADD MODULE — menampilkan komposisi lengkap (sudah/belum terpasang) */}
       {isAddModuleOpen && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-[#0b1017] border border-slate-800/90 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
@@ -395,9 +454,9 @@ export default function SiteSettingScreen() {
                   <LayoutGrid className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Module Catalog</h3>
+                  <h3 className="text-sm font-semibold text-white">Module Composition</h3>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Select a module to install on {site?.name || "this node"}
+                    Status modul inti pada {site?.name || "node ini"} — hasil cek langsung via SSH
                   </p>
                 </div>
               </div>
@@ -410,33 +469,69 @@ export default function SiteSettingScreen() {
             </div>
 
             <div className="p-5 space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar">
-              {availableCatalog.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-6">
-                  Semua modul pada katalog sudah terpasang.
-                </p>
+              {modulesLoading ? (
+                <div className="flex items-center justify-center gap-2 text-xs text-slate-500 py-8">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Memeriksa modul...
+                </div>
               ) : (
-                availableCatalog.map((item) => (
+                moduleComposition.map((item) => (
                   <div
                     key={item.id}
-                    className="p-3.5 bg-[#0e1420] border border-slate-800/80 rounded-xl flex items-center justify-between gap-3"
+                    className="p-3.5 bg-[#0e1420] border border-slate-800/80 rounded-xl space-y-2.5"
                   >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-8 h-8 rounded-lg border flex items-center justify-center text-xs font-bold ${COLOR_STYLES[item.color]}`}
-                      >
-                        {item.letter}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={`w-8 h-8 rounded-lg border flex items-center justify-center text-xs font-bold shrink-0 ${COLOR_STYLES[item.color]}`}
+                        >
+                          {item.letter}
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-semibold text-white truncate">{item.name}</h4>
+                          {item.installed ? (
+                            <span className="text-[10px] font-mono text-slate-500 truncate block">
+                              v{item.version} · {item.path}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-mono text-slate-600">Belum terpasang</span>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="text-xs font-semibold text-white">{item.name}</h4>
-                        <span className="text-[10px] font-mono text-slate-500">v{item.version}</span>
-                      </div>
+
+                      {item.installed ? (
+                        <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-950/40 px-2.5 py-1 rounded border border-emerald-800/30 shrink-0">
+                          <Check className="w-3 h-3" />
+                          Installed
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono text-slate-500 bg-slate-800/40 px-2.5 py-1 rounded border border-slate-700/50 shrink-0">
+                          Not Installed
+                        </span>
+                      )}
                     </div>
-                    <button
-                      onClick={() => handleInstallModule(item)}
-                      className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors cursor-pointer"
-                    >
-                      Install
-                    </button>
+
+                    {!item.installed && (
+                      <div className="flex items-center gap-2 bg-[#090d14] border border-slate-800/60 rounded-lg px-2.5 py-1.5">
+                        <code className="text-[10px] font-mono text-slate-400 truncate flex-1">
+                          {item.command}
+                        </code>
+                        <button
+                          onClick={() => handleCopyCommand(item.id, item.command)}
+                          title="Copy install command"
+                          className="shrink-0 flex items-center gap-1 text-[10px] font-medium text-slate-300 hover:text-white bg-slate-800/60 hover:bg-slate-800 px-2 py-1 rounded transition-colors cursor-pointer"
+                        >
+                          {copiedId === item.id ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-400" /> Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" /> Copy
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -450,19 +545,7 @@ export default function SiteSettingScreen() {
 
 // --- SUB-COMPONENTS ---
 
-function ModuleRow({ module: m, isBusy, onAction }) {
-  const statusStyles = {
-    installed: { dot: "bg-slate-500", text: "text-slate-400", label: "Installed" },
-    running: { dot: "bg-emerald-500 animate-pulse", text: "text-emerald-400", label: "Running" },
-    stopped: { dot: "bg-rose-500", text: "text-rose-400", label: "Stopped" },
-    restarting: { dot: "bg-amber-500 animate-pulse", text: "text-amber-400", label: "Restarting..." }
-  };
-  const status = statusStyles[m.status] || statusStyles.installed;
-  const resourceUsage =
-    m.status === "running" && m.cpu !== null
-      ? `cpu ${m.cpu}% · mem ${m.mem}MB`
-      : "— runtime";
-
+function ModuleRow({ module: m }) {
   return (
     <div className="grid grid-cols-12 gap-4 px-5 py-4 items-center border-b border-slate-800/40 last:border-b-0 hover:bg-slate-900/20 transition-colors">
       <div className="col-span-4 flex items-center gap-3">
@@ -474,56 +557,22 @@ function ModuleRow({ module: m, isBusy, onAction }) {
         <span className="text-sm text-white font-medium truncate">{m.name}</span>
       </div>
 
-      <div className="col-span-2 text-xs font-mono text-slate-400">{m.version}</div>
+      <div className="col-span-2 text-xs font-mono text-slate-400">{m.version ? `v${m.version}` : "-"}</div>
 
       <div className="col-span-2 flex items-center gap-1.5">
-        <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
-        <span className={`text-xs font-mono ${status.text}`}>{status.label}</span>
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+        <span className="text-xs font-mono text-emerald-400">Installed</span>
       </div>
 
-      <div className="col-span-2 text-xs font-mono text-slate-500">{resourceUsage}</div>
+      <div className="col-span-2 text-xs font-mono text-slate-500 truncate">{m.path || "—"}</div>
 
       <div className="col-span-2 flex items-center justify-end gap-3">
-        {isBusy ? (
-          <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin" />
-        ) : m.status === "installed" ? (
-          <button
-            onClick={() => onAction("uninstall")}
-            className="text-xs text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
-          >
-            Uninstall
-          </button>
-        ) : m.status === "stopped" ? (
-          <>
-            <button
-              onClick={() => onAction("start")}
-              className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
-            >
-              Start
-            </button>
-            <button
-              onClick={() => onAction("uninstall")}
-              className="text-xs text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
-            >
-              Uninstall
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={() => onAction("restart")}
-              className="text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
-            >
-              Restart
-            </button>
-            <button
-              onClick={() => onAction("stop")}
-              className="text-xs text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
-            >
-              Stop
-            </button>
-          </>
-        )}
+        <button
+          onClick={() => alert("Uninstall belum tersedia lewat API. Jalankan secara manual via tab Terminal.")}
+          className="text-xs text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+        >
+          Uninstall
+        </button>
       </div>
     </div>
   );
