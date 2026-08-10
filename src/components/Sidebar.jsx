@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import api from "../api/axios";
 import { useTenant } from "../context/TenantContext"; // Import Custom Hook Context
+import logo from "../assets/logo.png"; // Import logo
 
 function Sidebar() {
   const location = useLocation();
@@ -127,16 +128,10 @@ function Sidebar() {
   return (
     <div className="w-64 h-screen bg-[#090D14] text-slate-400 flex flex-col border-r border-slate-800/60 font-sans select-none relative">
       {/* 1. BRAND HEADER */}
-      <div className="px-5 py-4 flex items-center justify-between border-b border-slate-800/40">
-        <div className="flex items-center gap-2.5">
-          <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-            <div className="w-2.5 h-2.5 rounded-full bg-[#090D14]" />
-          </div>
-          <span className="text-white font-semibold text-base tracking-tight">
-            PrimaSphere
-          </span>
+      <div className="px-1 py-4 flex items-center justify-between border-b border-slate-800/40">
+        <div className="flex">
+          <img src={logo} alt="Logo" style={{ width: "140px", height: "55px" }} />
         </div>
-        <Code2 className="w-4 h-4 text-slate-500 hover:text-slate-300 cursor-pointer transition-colors" />
       </div>
 
       {/* 2. WORKSPACE SWITCHER */}

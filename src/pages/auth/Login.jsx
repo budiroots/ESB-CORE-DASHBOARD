@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import api from "../../api/axios"; // 🔥 pakai axios instance
+import logo from "../../assets/logo.png";
 
 // Palet warna (di-flatten dari tema oklch versi CSS ke hex/rgba supaya
 // gampang dipakai di inline style object tanpa custom property CSS).
@@ -268,15 +269,11 @@ const Login = () => {
       <form onSubmit={handleSubmit} noValidate autoComplete="on" style={styles.card}>
         <div style={styles.brand}>
           <div style={styles.logoRow}>
-            <svg viewBox="0 0 24 24" fill="none" stroke={COLORS.accent2} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={styles.logoIcon}>
-              <circle cx="12" cy="12" r="3.2" />
-              <path d="M12 2.5v3.4M12 18.1v3.4M21.5 12h-3.4M5.9 12H2.5M18.1 5.9l-2.4 2.4M8.3 15.7l-2.4 2.4M18.1 18.1l-2.4-2.4M8.3 8.3 5.9 5.9" />
-            </svg>
-            <span style={styles.logoText}>Primacom ESB Monitoring</span>
+              <img src={logo} alt="Logo" style={{ width: "140px", height: "55px" }} />
           </div>
           <h1 style={styles.title}>Log in to your account</h1>
           <p style={styles.subtitle}>
-            Silahkan masuk ke <b style={styles.subtitleBold}>dashboard monitoring</b> Anda.
+            Silahkan masuk ke <b style={styles.subtitleBold}>Dashboard Monitoring</b> Anda.
           </p>
         </div>
 
