@@ -186,7 +186,7 @@ export default function SiteHealth({ site }) {
             Resource usage & system information (live via SSH)
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        {/* <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={fetchHealth}
@@ -208,7 +208,7 @@ export default function SiteHealth({ site }) {
             <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
             Setting Firewall
           </button>
-        </div>
+        </div> */}
       </div>
 
       {/* CPU / MEMORY / STORAGE BARS */}

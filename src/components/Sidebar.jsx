@@ -41,7 +41,7 @@ function Sidebar() {
       items: [
         { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard, permissionKey: "dashboard" },
         { name: "Traffic Monitor", path: "/traffic", icon: Activity, badgeDot: true, permissionKey: "traffic" },
-        { name: "Sites", path: "/sites", icon: GitBranch, permissionKey: "sites" },
+        { name: "pEdge", path: "/sites", icon: GitBranch, permissionKey: "sites" },
         { name: "Camel Instances", path: "/camel", icon: Boxes, permissionKey: "camel" },
         { name: "Kafka Ops", path: "/kafka", icon: Share2, permissionKey: "kafka" },
       ],

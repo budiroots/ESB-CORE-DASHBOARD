@@ -10,11 +10,17 @@ import {
   RefreshCw
 } from 'lucide-react';
 import api from '../../api/axios';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
-const FirewallSecurity = () => {
+/**
+ * Isi utama UFW Firewall Security (header status, form tambah rule, tabel rule aktif).
+ * Dipisah dari wrapper full-page-nya supaya bisa langsung ditanam (embed) di tempat lain,
+ * mis. tab "Security" pada SiteSettingScreen — tanpa perlu navigasi ke route /firewall/:id.
+ * Tetap memakai useParams() untuk id, jadi tetap berfungsi baik diakses lewat route
+ * /firewall/:id maupun saat ditanam di dalam route /setting/:id.
+ */
+export function FirewallPanel() {
   const { id } = useParams();
-  const navigate = useNavigate(); 
 
   // State Khusus Firewall Security
   const [fwRules, setFwRules] = useState([]);
@@ -96,7 +102,7 @@ const FirewallSecurity = () => {
 
   // Handler Hapus Aturan berdasarkan ID/Nomor urut UFW
   const handleDeleteRule = async (ids) => {
-    if (window.confirm(`Apakah Anda yakin ingin menghapus aturan nomor [${ids}]?`)) {
+    if (window.confirm(`Apakah Anda yakin ingin menghapus aturan nomor [${ids},${id}]?`)) {
       try {
         await api.delete(`/site/firewall/rules/${ids}/${id}`);
         fetchFirewallData();
@@ -107,12 +113,8 @@ const FirewallSecurity = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#090D14] text-slate-300 p-4 sm:p-6 lg:p-8 font-sans flex flex-col justify-between">
-      
-      {/* WRAPPER KONTEN UTAMA */}
-      <div className="flex-1 flex flex-col max-w-7xl w-full mx-auto">
-        
-        {/* 1. HEADER & STATUS TOGGLE */}
+    <div className="flex flex-col w-full">
+      {/* 1. HEADER & STATUS TOGGLE */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pb-6 border-b border-slate-800/60 shrink-0">
           <div className="flex items-center gap-3">
             <div className={`p-2.5 rounded-xl border ${
@@ -246,7 +248,7 @@ const FirewallSecurity = () => {
             </div>
           ) : (
             <div className="flex-1 border border-slate-800/80 rounded-xl overflow-hidden bg-[#0d131d] flex flex-col">
-              <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-380px)]">
+              <div className="overflow-x-auto overflow-y-auto max-h-[420px]">
                 <table className="w-full text-left border-collapse">
                   <thead className="sticky top-0 bg-[#111722] z-10">
                     <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
@@ -314,11 +316,21 @@ const FirewallSecurity = () => {
             </div>
           )}
         </div>
-
-      </div>
-
     </div>
   );
-};
+}
 
-export default FirewallSecurity;
+/**
+ * Halaman penuh untuk route /firewall/:id — membungkus FirewallPanel dengan
+ * background & padding full-page. Dipakai saat firewall diakses langsung
+ * sebagai halaman tersendiri (di luar tab Security pada SiteSettingScreen).
+ */
+export default function FirewallSecurity() {
+  return (
+    <div className="min-h-screen w-full bg-[#090D14] text-slate-300 p-4 sm:p-6 lg:p-8 font-sans">
+      <div className="max-w-7xl w-full mx-auto">
+        <FirewallPanel />
+      </div>
+    </div>
+  );
+}

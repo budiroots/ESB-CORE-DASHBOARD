@@ -18,8 +18,8 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
  */
 export default function SiteTopology({ sites, picked, onPick, connStatus = {} }) {
   return (
-    <div className="bg-[#0b0f17] border border-slate-800/80 rounded-xl p-5 shadow-xl">
-      <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-800/60">
+    <div className="bg-[#0b0f17] border border-slate-800/80 rounded-xl p-5 shadow-xl h-full flex flex-col">
+      <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-800/60 shrink-0">
         <div>
           <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
             Site Topology
@@ -143,7 +143,7 @@ function TopologyGraph({ sites, picked, onPick, connStatus }) {
   }, [recalcPositions]);
 
   return (
-    <div ref={containerRef} className="grid grid-cols-2 gap-8 py-4 relative min-h-[220px]">
+    <div ref={containerRef} className="grid grid-cols-2 gap-8 py-4 relative min-h-[220px] flex-1">
       {/* Keyframes animasi "aliran listrik" pada garis koneksi yang aktif */}
       <style>{`
         @keyframes topology-current-flow {

@@ -7,6 +7,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import TrafficScreen from "./pages/main/TrafficScreen";
 import CamelScreen from "./pages/main/CamelScreen";
 import SitesScreen from "./pages/main/SitesScreen";
+import SiteSettingScreen from "./pages/main/SiteApp/SiteSettingScreen";
 import KafkaScreen from "./pages/main/KafkaScreen";
 import RoutesScreen from "./pages/main/RoutesScreen";
 import AppScreen from "./pages/main/AppsScreen";
@@ -50,6 +51,7 @@ function App() {
         <Route path="routing" element={<Routing />} /> */}
           <Route path="settings/members" element={<MemberScreen />} />
           <Route path="firewall/:id" element={<FirewallSecurity />} />
+          <Route path="setting/:id" element={<SiteSettingScreen />} />
           <Route path="settings/license" element={<LicenseManagement />} />
 
           <Route path="dashboard" element={<DashboardPrimacom />} />

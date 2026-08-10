@@ -15,20 +15,18 @@ import {
   Globe,
   Radio,
   AppWindow,
-  Terminal as TerminalIcon,
   CheckCircle2,
   Trash,
   Key,
   Lock,
   ShieldCheck,
+  Settings,
   Eye,
   EyeOff,
   Loader2
 } from "lucide-react";
 import { useTenant } from "../../context/TenantContext";
 import api from "../../api/axios";
-import LiveTerminal from "./SiteApp/LiveTerminal";
-import SiteInstalledApps from "./SiteApp/LiveRecommendedApps";
 import SiteTopology from "./SiteApp/SiteTopology";
 import SiteHealth from "./SiteApp/SiteHealth";
 
@@ -97,19 +95,6 @@ export default function SitesPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
   const [isAddAppModalOpen, setIsAddAppModalOpen] = useState(false);
-  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
-
-  const handleInstallRecommendedApp = (app) => {
-    // Kirim command terminal langsung ke backend SSH
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      // Jalankan command diikuti Enter (\n)
-      wsRef.current.send(`${app.command}\n`);
-    }
-  };
-
-  const toggleTerminal = () => {
-    setIsTerminalOpen((prev) => !prev);
-  };
 
   // Connection status tiap site (keyed by site id)
   // shape per entry: { status: 'checking' | 'connected' | 'disconnected', message: string, lastChecked: Date }
@@ -380,9 +365,9 @@ export default function SitesPage() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-12 gap-5">
+          <div className="grid grid-cols-12 gap-5 items-stretch">
             {/* Topology View Column */}
-            <div className="col-span-12 lg:col-span-7">
+            <div className="col-span-12 lg:col-span-7 h-full">
               <SiteTopology sites={sites} picked={picked} onPick={setPicked} connStatus={connStatus} />
             </div>
 
@@ -393,80 +378,11 @@ export default function SitesPage() {
                   <SiteDetail
                     s={site}
                     onEdit={() => handleOpenEditModal(site)}
-                    onDelete={() => handleDeleteSite(site.id)}
                     connStatus={connStatus[site.id]}
                     onRecheck={() => checkSiteConnection(site.id)}
                   />
-                  <SiteHealth site={site} />
+                  {/* <SiteHealth site={site} /> */}
                 </>
-              )}
-            </div>
-          </div>
-
-          {/* APPS & TERMINAL ROW */}
-          <div className="grid grid-cols-12 gap-5 pt-2">
-            {/* INSTALLED APPS (dummy) */}
-            <div className="col-span-12 lg:col-span-6">
-              <SiteInstalledApps site={site} />
-            </div>
-
-            {/* LIVE TERMINAL ACCESS */}
-            <div className="col-span-12 lg:col-span-6 bg-[#0b0f17] border border-slate-800/80 rounded-xl p-5 shadow-xl flex flex-col">
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800/60">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-[#141d2d] border border-slate-700/60 flex items-center justify-center text-emerald-400">
-                    <TerminalIcon className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                      Live Terminal Access
-                    </h2>
-                    <p className="text-[10px] text-slate-500 font-mono">
-                      SSH connection to {site?.sshUser || "root"}@{site?.endpoint || "127.0.0.1"}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`w-2 h-2 rounded-full ${connStatus[site?.id]?.status === "connected"
-                      ? "bg-emerald-500 animate-pulse"
-                      : connStatus[site?.id]?.status === "disconnected"
-                        ? "bg-rose-500"
-                        : "bg-amber-500 animate-pulse"
-                      }`}
-                  />
-                  <span
-                    className={`text-[10px] font-mono ${connStatus[site?.id]?.status === "connected"
-                      ? "text-emerald-400"
-                      : connStatus[site?.id]?.status === "disconnected"
-                        ? "text-rose-400"
-                        : "text-amber-400"
-                      }`}
-                  >
-                    {connStatus[site?.id]?.status === "connected"
-                      ? "Connected"
-                      : connStatus[site?.id]?.status === "disconnected"
-                        ? "Disconnected"
-                        : "Checking..."}
-                  </span>
-                </div>
-                {/* --- TOMBOL BUKA / TUTUP TERMINAL --- */}
-                <button
-                  onClick={toggleTerminal}
-                  className={`px-4 py-2 rounded-md font-medium text-sm transition-colors flex items-center gap-2 ${isTerminalOpen
-                    ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    }`}
-                >
-                  {/* Icon Terminal Sederhana */}
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  {isTerminalOpen ? 'Tutup SSH' : 'Buka SSH'}
-                </button>
-              </div>
-              {isTerminalOpen && (
-                <LiveTerminal siteId={site} connStatus={connStatus[site?.id]} />
               )}
             </div>
           </div>
@@ -781,6 +697,7 @@ function StatCard({ label, value, hint, icon }) {
 }
 
 function SiteDetail({ s, onEdit, onDelete, connStatus, onRecheck }) {
+  const navigate = useNavigate();
   const status = connStatus?.status || "checking";
 
   const badgeConfig = {
@@ -813,11 +730,15 @@ function SiteDetail({ s, onEdit, onDelete, connStatus, onRecheck }) {
           <p className="text-[11px] font-mono text-slate-400">{s.endpoint}</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <button onClick={onEdit} className="p-1.5 text-slate-400 hover:text-white rounded bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer">
+          <button onClick={onEdit} title="Edit" className="p-1.5 text-slate-400 hover:text-white rounded bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer">
             <Pencil className="w-3.5 h-3.5" />
           </button>
-          <button onClick={onDelete} className="p-1.5 text-rose-400 hover:text-rose-300 rounded bg-rose-950/30 hover:bg-rose-900/50 transition-colors cursor-pointer">
-            <Trash2 className="w-3.5 h-3.5" />
+          <button
+            onClick={() => navigate(`/setting/${s.id}`)}
+            title="Node Settings (Installed Apps & Terminal)"
+            className="p-1.5 text-slate-400 hover:text-white rounded bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            <Settings className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -848,24 +769,7 @@ function SiteDetail({ s, onEdit, onDelete, connStatus, onRecheck }) {
       )}
 
       <div className="space-y-2 text-xs">
-        {/* <div className="flex justify-between py-1 border-b border-slate-800/30">
-          <span className="text-slate-500">Kind / Type:</span>
-          <span className="text-slate-200 font-medium">{s.kind === 0 ? "On-Premises" : "Cloud"}</span>
-        </div> */}
-        <div className="flex justify-between py-1 border-b border-slate-800/30">
-          <span className="text-slate-500">Auth Method:</span>
-          <span className="text-slate-200 font-mono">{s.authMethod || "SshKey"}</span>
-        </div>
-        <div className="flex justify-between py-1 border-b border-slate-800/30">
-          <span className="text-slate-500">SSH Credentials:</span>
-          <span className="text-slate-200 font-mono">{s.sshUser || "root"}:{s.sshPort || "22"}</span>
-        </div>
-        <div className="pt-1">
-          <span className="text-slate-500 block mb-1">Description:</span>
-          <p className="text-slate-400 bg-[#080c13] p-2 rounded border border-slate-800/60 text-[11px]">
-            {s.desc || "Tidak ada deskripsi."}
-          </p>
-        </div>
+        <SiteHealth site={s} />
       </div>
     </div>
   );
