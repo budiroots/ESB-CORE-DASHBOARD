@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Database,
   Radio,
@@ -13,15 +13,27 @@ import {
   Check,
   RefreshCw,
   Loader2,
-  Plug
+  Plug,
+  AlertTriangle
 } from "lucide-react";
+import { useTenant } from "../../context/TenantContext";
+import api from "../../api/axios";
 
 /**
  * "Apps & Connections" — registry koneksi reusable (Database / Message Broker / REST API).
  * Setiap koneksi yang dibuat di sini bisa direferensikan lewat `refId`-nya nanti
  * di Visual Route Builder (YAML), jadi kredensial cukup diisi sekali lalu dipakai berulang.
  *
- * Masih pakai data dummy (local state) — belum terhubung ke endpoint backend manapun.
+ * Terhubung ke backend nyata (ConnectionController -> /api/v1/connection):
+ * - GET    /connection/{idTenant}[?type=]  -> list (difilter client-side di UI ini)
+ * - POST   /connection/{idTenant}          -> create
+ * - PUT    /connection/{id}                -> update
+ * - DELETE /connection/{id}                -> delete (soft delete di server)
+ * - POST   /connection/{id}/test           -> test connection beneran (TCP/ping/HTTP)
+ *
+ * Kredensial (password/token/apiKeyValue) TIDAK PERNAH dikirim balik oleh server — cuma flag
+ * has* di dalam `config`. Jadi field-field itu selalu dimulai kosong saat edit; dikosongkan
+ * berarti "jangan ubah", diisi berarti "ganti dengan nilai baru" (sama seperti pola Edit Site).
  */
 
 // --- KATALOG TIPE KONEKSI ---
@@ -99,8 +111,16 @@ const INITIAL_FORM = {
   authType: "none",
   token: "",
   apiKeyHeader: "X-API-Key",
-  apiKeyValue: ""
+  apiKeyValue: "",
+  // flag "sudah ada secret tersimpan di server" — cuma dipakai untuk teks placeholder saat edit,
+  // tidak pernah dikirim balik ke server.
+  hasPassword: false,
+  hasToken: false,
+  hasApiKeyValue: false
 };
+
+// Placeholder untuk field secret yang sudah ada nilainya di server (dikosongkan = tidak diubah).
+const SECRET_PLACEHOLDER = "•••••••• (kosongkan jika tidak diubah)";
 
 // --- HELPERS ---
 function slugify(str) {
@@ -117,124 +137,74 @@ function buildRefId(type, engine, name) {
   return `conn.${engine}.${slugify(name)}`;
 }
 
-function extractConfig(formData) {
-  if (formData.type === "database") {
-    return {
-      host: formData.host,
-      port: formData.port,
-      database: formData.database,
-      username: formData.username,
-      password: formData.password,
-      ssl: formData.ssl
-    };
-  }
-  if (formData.type === "message") {
-    return {
-      brokers: formData.brokers,
-      securityProtocol: formData.securityProtocol,
-      saslMechanism: formData.saslMechanism,
-      username: formData.username,
-      password: formData.password,
-      clientId: formData.clientId
-    };
-  }
+function getTargetLabel(conn) {
+  if (conn.type === "database") return `${conn.config.host || "-"}:${conn.config.port || "-"}/${conn.config.database || "-"}`;
+  if (conn.type === "message") return conn.config.brokers || "-";
+  return conn.config.baseUrl || "-";
+}
+
+// Bentuk payload UpsertConnectionRequest yang dipakai backend untuk POST (create) & PUT (update).
+// Password/Token/ApiKeyValue dikirim apa adanya dari form — kosong berarti "jangan ubah" di server.
+function buildPayload(formData) {
   return {
-    baseUrl: formData.baseUrl,
-    authType: formData.authType,
-    username: formData.username,
-    password: formData.password,
-    token: formData.token,
-    apiKeyHeader: formData.apiKeyHeader,
-    apiKeyValue: formData.apiKeyValue
+    name: formData.name.trim(),
+    desc: formData.desc || "",
+    type: formData.type,
+    engine: formData.engine,
+    host: formData.host || null,
+    port: formData.port || null,
+    database: formData.database || null,
+    ssl: !!formData.ssl,
+    brokers: formData.brokers || null,
+    securityProtocol: formData.securityProtocol || null,
+    saslMechanism: formData.saslMechanism || null,
+    clientId: formData.clientId || null,
+    baseUrl: formData.baseUrl || null,
+    authType: formData.authType || null,
+    apiKeyHeader: formData.apiKeyHeader || null,
+    username: formData.username || null,
+    password: formData.password || null,
+    token: formData.token || null,
+    apiKeyValue: formData.apiKeyValue || null
   };
 }
 
-function getTargetLabel(conn) {
-  if (conn.type === "database") return `${conn.config.host}:${conn.config.port}/${conn.config.database}`;
-  if (conn.type === "message") return conn.config.brokers;
-  return conn.config.baseUrl;
-}
-
-// --- DUMMY SEED DATA ---
-const SEED_CONNECTIONS = [
-  {
-    id: "conn-1",
-    name: "Orders MongoDB",
-    type: "database",
-    engine: "mongodb",
-    desc: "Primary orders read-replica dipakai route order-sync.",
-    status: "connected",
-    config: {
-      host: "10.20.4.12",
-      port: "27017",
-      database: "orders_prod",
-      username: "svc_orders",
-      password: "P@ssw0rd_Dummy1",
-      ssl: true
-    }
-  },
-  {
-    id: "conn-2",
-    name: "Analytics PostgreSQL",
-    type: "database",
-    engine: "postgresql",
-    desc: "Warehouse sink untuk ETL malam hari.",
-    status: "untested",
-    config: {
-      host: "10.20.4.30",
-      port: "5432",
-      database: "analytics_dw",
-      username: "svc_analytics",
-      password: "Dummy_Pg_Pw2",
-      ssl: false
-    }
-  },
-  {
-    id: "conn-3",
-    name: "Event Bus Kafka",
-    type: "message",
-    engine: "kafka",
-    desc: "Central event bus untuk topic order & inventory.",
-    status: "connected",
-    config: {
-      brokers: "kafka-1.internal:9092,kafka-2.internal:9092",
-      securityProtocol: "SASL_SSL",
-      saslMechanism: "SCRAM-SHA-512",
-      username: "svc_kafka",
-      password: "Dummy_Kafka_Pw3",
-      clientId: "pedge-integration"
-    }
-  },
-  {
-    id: "conn-4",
-    name: "Partner Billing API",
-    type: "api",
-    engine: "rest",
-    desc: "Integrasi REST billing pihak ketiga.",
-    status: "failed",
-    config: {
-      baseUrl: "https://api.partner-billing.com/v1",
-      authType: "bearer",
-      username: "",
-      password: "",
-      token: "dummy_bearer_token_abc123",
-      apiKeyHeader: "X-API-Key",
-      apiKeyValue: ""
-    }
-  }
-].map((c) => ({ ...c, refId: buildRefId(c.type, c.engine, c.name) }));
-
 export default function AppsScreen() {
-  const [connections, setConnections] = useState(SEED_CONNECTIONS);
+  const { tenantId } = useTenant();
+
+  const [connections, setConnections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [filterType, setFilterType] = useState("all");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("add");
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [showSecret, setShowSecret] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [testingId, setTestingId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+
+  // --- FETCH CONNECTIONS (tenant yang sedang difokuskan) ---
+  const fetchConnections = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const response = await api.get(`/connection/${tenantId || ""}`);
+      setConnections(response.data?.data || []);
+    } catch (error) {
+      console.error("Gagal mengambil daftar koneksi:", error);
+      setLoadError(error?.response?.data?.error || "Gagal mengambil daftar koneksi.");
+      setConnections([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [tenantId]);
+
+  useEffect(() => {
+    fetchConnections();
+  }, [fetchConnections]);
 
   const filtered = useMemo(
     () => (filterType === "all" ? connections : connections.filter((c) => c.type === filterType)),
@@ -261,7 +231,34 @@ export default function AppsScreen() {
 
   const openEditModal = (conn) => {
     setModalMode("edit");
-    setFormData({ ...INITIAL_FORM, ...conn, ...conn.config });
+    setFormData({
+      ...INITIAL_FORM,
+      id: conn.id,
+      name: conn.name,
+      type: conn.type,
+      engine: conn.engine,
+      desc: conn.desc || "",
+      host: conn.config?.host || "",
+      port: conn.config?.port || DB_ENGINES[conn.engine]?.defaultPort || "",
+      database: conn.config?.database || "",
+      username: conn.config?.username || "",
+      ssl: !!conn.config?.ssl,
+      brokers: conn.config?.brokers || "",
+      securityProtocol: conn.config?.securityProtocol || "PLAINTEXT",
+      saslMechanism: conn.config?.saslMechanism || "PLAIN",
+      clientId: conn.config?.clientId || "",
+      baseUrl: conn.config?.baseUrl || "",
+      authType: conn.config?.authType || "none",
+      apiKeyHeader: conn.config?.apiKeyHeader || "X-API-Key",
+      // Server tidak pernah kirim balik secret asli — field ini sengaja dimulai kosong.
+      // Kosong = "jangan ubah"; flag has* di bawah cuma dipakai buat teks placeholder.
+      password: "",
+      token: "",
+      apiKeyValue: "",
+      hasPassword: !!conn.config?.hasPassword,
+      hasToken: !!conn.config?.hasToken,
+      hasApiKeyValue: !!conn.config?.hasApiKeyValue
+    });
     setShowSecret(false);
     setIsModalOpen(true);
   };
@@ -284,57 +281,64 @@ export default function AppsScreen() {
     }));
   };
 
-  // --- SAVE (local-only, belum ada endpoint backend) ---
-  const handleSave = (e) => {
+  // --- SAVE (create/update via API) ---
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
       alert("Nama koneksi wajib diisi!");
       return;
     }
 
-    const config = extractConfig(formData);
-    const refId = buildRefId(formData.type, formData.engine, formData.name);
+    setSubmitting(true);
+    const payload = buildPayload(formData);
 
-    if (modalMode === "add") {
-      const newConn = {
-        id: `conn-${Date.now()}`,
-        name: formData.name,
-        type: formData.type,
-        engine: formData.engine,
-        desc: formData.desc,
-        refId,
-        status: "untested",
-        config
-      };
-      setConnections((prev) => [newConn, ...prev]);
-    } else {
+    try {
+      if (modalMode === "add") {
+        await api.post(`/connection/${tenantId || ""}`, payload);
+      } else {
+        await api.put(`/connection/${formData.id}`, payload);
+      }
+      await fetchConnections();
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error("Gagal menyimpan koneksi:", error);
+      alert(error?.response?.data?.error || error?.response?.data?.message || "Gagal menyimpan koneksi.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Hapus koneksi ini? Route yang masih mereferensikan koneksi ini bisa gagal jalan.")) return;
+    try {
+      await api.delete(`/connection/${id}`);
+      setConnections((prev) => prev.filter((c) => c.id !== id));
+    } catch (error) {
+      console.error("Gagal menghapus koneksi:", error);
+      alert(error?.response?.data?.error || "Gagal menghapus koneksi.");
+    }
+  };
+
+  // --- TEST CONNECTION (beneran nyoba konek: TCP/ping/HTTP tergantung engine, lihat ConnectionService) ---
+  const handleTest = async (id) => {
+    setTestingId(id);
+    setConnections((prev) => prev.map((c) => (c.id === id ? { ...c, status: "testing" } : c)));
+    try {
+      const response = await api.post(`/connection/${id}/test`);
+      const result = response.data?.data || {};
       setConnections((prev) =>
         prev.map((c) =>
-          c.id === formData.id
-            ? { ...c, name: formData.name, type: formData.type, engine: formData.engine, desc: formData.desc, refId, config }
+          c.id === id
+            ? { ...c, status: result.status || "failed", lastTestedAt: result.testedAt, testMessage: result.message }
             : c
         )
       );
-    }
-    setIsModalOpen(false);
-  };
-
-  const handleDelete = (id) => {
-    if (!window.confirm("Hapus koneksi ini? Route yang masih mereferensikan koneksi ini bisa gagal jalan.")) return;
-    setConnections((prev) => prev.filter((c) => c.id !== id));
-  };
-
-  // --- TEST CONNECTION (dummy simulasi, belum ada endpoint backend) ---
-  const handleTest = (id) => {
-    setTestingId(id);
-    setConnections((prev) => prev.map((c) => (c.id === id ? { ...c, status: "testing" } : c)));
-    setTimeout(() => {
-      const success = Math.random() > 0.2;
-      setConnections((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, status: success ? "connected" : "failed" } : c))
-      );
+    } catch (error) {
+      console.error("Gagal test koneksi:", error);
+      setConnections((prev) => prev.map((c) => (c.id === id ? { ...c, status: "failed" } : c)));
+    } finally {
       setTestingId(null);
-    }, 900);
+    }
   };
 
   const handleCopyRefId = (id, refId) => {
@@ -355,13 +359,23 @@ export default function AppsScreen() {
             bisa dipakai berulang kali sebagai referensi di Visual Route Builder (YAML).
           </p>
         </div>
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-md shadow-blue-600/20 transition-all cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          Add Connection
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={fetchConnections}
+            disabled={loading}
+            title="Refresh"
+            className="flex items-center justify-center w-8 h-8 rounded-lg border border-slate-800 bg-[#0b0f17] hover:bg-[#141d2d] text-slate-300 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          </button>
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-md shadow-blue-600/20 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            Add Connection
+          </button>
+        </div>
       </div>
 
       {/* STATS CARDS */}
@@ -401,7 +415,23 @@ export default function AppsScreen() {
           <div className="col-span-1 text-right">Actions</div>
         </div>
 
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="py-16 text-center flex flex-col items-center justify-center gap-2">
+            <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+            <p className="text-xs text-slate-400">Memuat daftar koneksi...</p>
+          </div>
+        ) : loadError ? (
+          <div className="py-16 text-center flex flex-col items-center justify-center gap-2 px-5">
+            <AlertTriangle className="w-6 h-6 text-rose-400" />
+            <p className="text-xs text-rose-400">{loadError}</p>
+            <button
+              onClick={fetchConnections}
+              className="text-xs text-blue-400 hover:text-blue-300 font-medium cursor-pointer mt-1"
+            >
+              Coba lagi
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="py-12 text-center text-xs text-slate-500">
             Belum ada koneksi untuk filter ini. Klik <span className="text-blue-400">Add Connection</span> untuk membuat baru.
           </div>
@@ -591,6 +621,7 @@ export default function AppsScreen() {
                           onChange={(v) => setFormData({ ...formData, password: v })}
                           show={showSecret}
                           onToggle={() => setShowSecret(!showSecret)}
+                          placeholder={formData.hasPassword ? SECRET_PLACEHOLDER : undefined}
                         />
                       </div>
                     </div>
@@ -675,6 +706,7 @@ export default function AppsScreen() {
                               onChange={(v) => setFormData({ ...formData, password: v })}
                               show={showSecret}
                               onToggle={() => setShowSecret(!showSecret)}
+                              placeholder={formData.hasPassword ? SECRET_PLACEHOLDER : undefined}
                             />
                           </div>
                         </div>
@@ -728,6 +760,7 @@ export default function AppsScreen() {
                             onChange={(v) => setFormData({ ...formData, password: v })}
                             show={showSecret}
                             onToggle={() => setShowSecret(!showSecret)}
+                            placeholder={formData.hasPassword ? SECRET_PLACEHOLDER : undefined}
                           />
                         </div>
                       </div>
@@ -741,7 +774,7 @@ export default function AppsScreen() {
                           onChange={(v) => setFormData({ ...formData, token: v })}
                           show={showSecret}
                           onToggle={() => setShowSecret(!showSecret)}
-                          placeholder="ey..."
+                          placeholder={formData.hasToken ? SECRET_PLACEHOLDER : "ey..."}
                         />
                       </div>
                     )}
@@ -764,6 +797,7 @@ export default function AppsScreen() {
                             onChange={(v) => setFormData({ ...formData, apiKeyValue: v })}
                             show={showSecret}
                             onToggle={() => setShowSecret(!showSecret)}
+                            placeholder={formData.hasApiKeyValue ? SECRET_PLACEHOLDER : undefined}
                           />
                         </div>
                       </div>
@@ -794,8 +828,10 @@ export default function AppsScreen() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 transition-all cursor-pointer"
+                  disabled={submitting}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
+                  {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {modalMode === "add" ? "Save Connection" : "Save Changes"}
                 </button>
               </div>
@@ -894,7 +930,7 @@ function ConnectionRow({ conn, onEdit, onDelete, onTest, onCopy, isTesting, isCo
         </button>
       </div>
 
-      <div className="col-span-1 flex items-center gap-1.5">
+      <div className="col-span-1 flex items-center gap-1.5" title={conn.testMessage || undefined}>
         <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
         <span className={`text-[10px] font-mono ${status.text}`}>{status.label}</span>
       </div>
