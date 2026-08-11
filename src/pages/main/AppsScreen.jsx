@@ -14,8 +14,10 @@ import {
   RefreshCw,
   Loader2,
   Plug,
-  AlertTriangle
+  AlertTriangle,
+  Code2
 } from "lucide-react";
+import { dump as dumpYaml } from "js-yaml";
 import { useTenant } from "../../context/TenantContext";
 import api from "../../api/axios";
 
@@ -169,6 +171,88 @@ function buildPayload(formData) {
   };
 }
 
+// Bentuk struktur YAML Camel (route step) dari sebuah koneksi tersimpan, supaya siap
+// di-copy-paste sebagai `from`/step di halaman lain (Visual Route Builder). Field secret
+// (password/token/apiKeyValue) TIDAK PERNAH ikut ke YAML — diganti placeholder `{{refId...}}`
+// yang di-resolve backend dari refId koneksinya saat route dijalankan.
+function buildConnectionYamlObject(conn) {
+  const cfg = conn.config || {};
+  const refId = conn.refId || buildRefId(conn.type, conn.engine, conn.name);
+
+  if (conn.type === "database") {
+    if (conn.engine === "mongodb") {
+      return {
+        from: {
+          uri: `mongodb:${refId}`,
+          parameters: {
+            database: cfg.database || "",
+            collection: "REPLACE_WITH_COLLECTION",
+            operation: "findAll"
+          }
+        }
+      };
+    }
+    // postgresql / mysql / mssql -> JDBC, dataSource bean di-resolve backend dari refId
+    return {
+      from: {
+        uri: "timer:REPLACE_TRIGGER?period=60000",
+        steps: [
+          { setBody: { simple: "SELECT * FROM REPLACE_WITH_TABLE" } },
+          { to: { uri: `jdbc:${refId}`, parameters: { outputType: "SelectList" } } }
+        ]
+      }
+    };
+  }
+
+  if (conn.type === "message") {
+    const parameters = { brokers: cfg.brokers || "" };
+    if (cfg.clientId) parameters.clientId = cfg.clientId;
+    if (cfg.securityProtocol && cfg.securityProtocol !== "PLAINTEXT") {
+      parameters.securityProtocol = cfg.securityProtocol;
+    }
+    if (cfg.securityProtocol && cfg.securityProtocol.startsWith("SASL")) {
+      parameters.saslMechanism = cfg.saslMechanism || "PLAIN";
+      parameters.saslJaasConfig = `{{${refId}.saslJaasConfig}}`;
+    }
+    return {
+      from: {
+        uri: "kafka:REPLACE_WITH_TOPIC",
+        parameters
+      }
+    };
+  }
+
+  // api / rest
+  const steps = [];
+  if (cfg.authType === "basic") {
+    steps.push({ setHeader: { name: "Authorization", simple: `Basic {{${refId}.basicAuthBase64}}` } });
+  } else if (cfg.authType === "bearer") {
+    steps.push({ setHeader: { name: "Authorization", simple: `Bearer {{${refId}.token}}` } });
+  } else if (cfg.authType === "apiKey") {
+    steps.push({ setHeader: { name: cfg.apiKeyHeader || "X-API-Key", simple: `{{${refId}.apiKeyValue}}` } });
+  }
+  steps.push({ to: { uri: cfg.baseUrl || "" } });
+
+  return {
+    from: {
+      uri: "direct:start",
+      steps
+    }
+  };
+}
+
+// Dump ke teks YAML siap-copas, plus header komentar berisi metadata koneksinya.
+function buildConnectionYamlText(conn) {
+  const typeLabel = CONNECTION_TYPES[conn.type]?.label || conn.type;
+  const engineLabel = ENGINE_BY_TYPE[conn.type]?.[conn.engine]?.label || conn.engine;
+  const header =
+    `# Connection : ${conn.name} (${typeLabel} / ${engineLabel})\n` +
+    `# Reference ID: ${conn.refId}\n` +
+    `# Generated dari Apps & Connections — tinggal copy-paste ke Visual Route Builder.\n`;
+  const body = dumpYaml([buildConnectionYamlObject(conn)], { noRefs: true, lineWidth: -1 });
+  return header + body;
+}
+
 export default function AppsScreen() {
   const { tenantId } = useTenant();
 
@@ -185,6 +269,9 @@ export default function AppsScreen() {
 
   const [testingId, setTestingId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+
+  const [previewConn, setPreviewConn] = useState(null);
+  const [yamlCopied, setYamlCopied] = useState(false);
 
   // --- FETCH CONNECTIONS (tenant yang sedang difokuskan) ---
   const fetchConnections = useCallback(async () => {
@@ -348,6 +435,20 @@ export default function AppsScreen() {
     });
   };
 
+  // --- PREVIEW YAML (struktur Camel dari koneksi ini, siap copy-paste ke halaman lain) ---
+  const openPreview = (conn) => {
+    setYamlCopied(false);
+    setPreviewConn(conn);
+  };
+
+  const handleCopyYaml = () => {
+    if (!previewConn) return;
+    navigator.clipboard.writeText(buildConnectionYamlText(previewConn)).then(() => {
+      setYamlCopied(true);
+      setTimeout(() => setYamlCopied(false), 1500);
+    });
+  };
+
   return (
     <div className="w-full min-h-screen bg-[#06090e] text-slate-300 p-8 font-sans select-none space-y-6">
       {/* HEADER */}
@@ -443,6 +544,7 @@ export default function AppsScreen() {
               onEdit={() => openEditModal(conn)}
               onDelete={() => handleDelete(conn.id)}
               onTest={() => handleTest(conn.id)}
+              onPreview={() => openPreview(conn)}
               onCopy={() => handleCopyRefId(conn.id, conn.refId)}
               isTesting={testingId === conn.id}
               isCopied={copiedId === conn.id}
@@ -839,6 +941,62 @@ export default function AppsScreen() {
           </div>
         </div>
       )}
+
+      {/* MODAL PREVIEW YAML */}
+      {previewConn && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-[#0b1017] border border-slate-800/90 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-5 flex items-center justify-between border-b border-slate-800/80 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-[#111823] border border-slate-700/50 flex items-center justify-center text-blue-400 shrink-0">
+                  <Code2 className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-white truncate">Preview YAML — {previewConn.name}</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Struktur Camel siap-pakai, tinggal copy-paste ke Visual Route Builder halaman lain
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewConn(null)}
+                className="text-slate-500 hover:text-slate-300 transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3 overflow-y-auto custom-scrollbar flex-1">
+              <pre className="bg-[#090d14] border border-slate-800 rounded-lg p-4 text-[11.5px] leading-relaxed font-mono text-emerald-300 whitespace-pre-wrap break-all overflow-x-auto">
+                {buildConnectionYamlText(previewConn)}
+              </pre>
+              <p className="text-[10.5px] text-slate-500">
+                Field rahasia (password/token/API key) sengaja tidak ditulis apa adanya — diganti placeholder{" "}
+                <code className="text-blue-400">{`{{${previewConn.refId}...}}`}</code> yang di-resolve backend dari
+                Reference ID koneksi ini saat route jalan.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 p-5 pt-3 border-t border-slate-800/60 shrink-0">
+              <button
+                type="button"
+                onClick={() => setPreviewConn(null)}
+                className="px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyYaml}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 transition-all cursor-pointer"
+              >
+                {yamlCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {yamlCopied ? "Copied!" : "Copy YAML"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -881,7 +1039,7 @@ function PasswordField({ value, onChange, show, onToggle, placeholder }) {
   );
 }
 
-function ConnectionRow({ conn, onEdit, onDelete, onTest, onCopy, isTesting, isCopied }) {
+function ConnectionRow({ conn, onEdit, onDelete, onTest, onPreview, onCopy, isTesting, isCopied }) {
   const typeMeta = CONNECTION_TYPES[conn.type];
   const engineMeta = ENGINE_BY_TYPE[conn.type][conn.engine];
   const target = getTargetLabel(conn);
@@ -943,6 +1101,13 @@ function ConnectionRow({ conn, onEdit, onDelete, onTest, onCopy, isTesting, isCo
           className="p-1.5 text-slate-400 hover:text-white rounded bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+        </button>
+        <button
+          onClick={onPreview}
+          title="Preview YAML"
+          className="p-1.5 text-slate-400 hover:text-white rounded bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer"
+        >
+          <Code2 className="w-3.5 h-3.5" />
         </button>
         <button
           onClick={onEdit}
