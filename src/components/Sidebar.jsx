@@ -9,18 +9,21 @@ import {
   Workflow,
   AppWindow,
   Users,
-  ShieldCheck,
+  Building2,
+  Shield,
+  ScrollText,
   Settings,
   Search,
   ChevronDown,
   ChevronUp,
   Check,
   Code2,
-  LogOut,
+  MoreVertical,
 } from "lucide-react";
 import api from "../api/axios";
 import { useTenant } from "../context/TenantContext"; // Import Custom Hook Context
 import logo from "../assets/logo.png"; // Import logo
+import AccountPanel from "./AccountPanel";
 
 function Sidebar() {
   const location = useLocation();
@@ -28,6 +31,7 @@ function Sidebar() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchWorkspace, setSearchWorkspace] = useState("");
   const [userData, setUserData] = useState(null);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const dropdownRef = useRef(null);
 
@@ -54,11 +58,12 @@ function Sidebar() {
       ],
     },
     {
-      title: "GOVERN",
+      title: "ADMINISTRATION",
       items: [
-        { name: "Tenants", path: "/tenants", icon: Users, permissionKey: "tenant" },
-        { name: "Lisensi", path: "/settings/license", icon: ShieldCheck, permissionKey: "rbac" },
-        { name: "Audit Log", path: "/auditlog", icon: ShieldCheck, permissionKey: "auditlog" },
+        { name: "Tenants", path: "/tenants", icon: Building2, permissionKey: "tenant" },
+        { name: "Users", path: "/settings/members", icon: Users, permissionKey: "settings" },
+        { name: "Roles", path: "/rbac", icon: Shield, permissionKey: "rbac" },
+        { name: "System Activity", path: "/auditlog", icon: ScrollText, permissionKey: "auditlog" },
         { name: "Settings", path: "/settings", icon: Settings, permissionKey: "settings" },
       ],
     },
@@ -128,9 +133,9 @@ function Sidebar() {
   return (
     <div className="w-64 h-screen bg-[#090D14] text-slate-400 flex flex-col border-r border-slate-800/60 font-sans select-none relative">
       {/* 1. BRAND HEADER */}
-      <div className="px-1 py-4 flex items-center justify-between border-b border-slate-800/40">
-        <div className="flex">
-          <img src={logo} alt="Logo" style={{ width: "140px", height: "55px" }} />
+      <div className="px-4 py-4 flex items-center justify-between border-b border-slate-800/40">
+        <div className="flex items-center">
+          <img src={logo} alt="Logo" className="h-8 w-auto max-w-full object-contain" />
         </div>
       </div>
 
@@ -288,21 +293,35 @@ function Sidebar() {
         })}
       </div>
 
-      {/* 4. FOOTER LOGOUT BUTTON */}
+      {/* 4. FOOTER USER MENU */}
       <div className="p-3 border-t border-slate-800/60">
         <button
-          onClick={handleLogout}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#0e141f] hover:bg-rose-950/30 border border-slate-800/80 hover:border-rose-900/50 text-xs text-slate-400 hover:text-rose-400 transition-all cursor-pointer group"
+          onClick={() => setAccountOpen(true)}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#0e141f] hover:bg-[#131b26] border border-slate-800/80 hover:border-slate-700/80 transition-all cursor-pointer group"
         >
-          <div className="flex items-center gap-2.5">
-            <LogOut className="w-3.5 h-3.5 text-slate-500 group-hover:text-rose-400 transition-colors" />
-            <span className="font-medium">Logout</span>
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
+              {(userData?.fullName || "U").charAt(0).toUpperCase()}
+            </div>
+            <div className="flex flex-col text-left overflow-hidden">
+              <span className="text-xs font-semibold text-slate-200 truncate">
+                {userData?.fullName || "User"}
+              </span>
+              <span className="text-[10px] text-slate-500 truncate">
+                {userData?.role || ""}
+              </span>
+            </div>
           </div>
-          <span className="text-[10px] text-slate-600 group-hover:text-rose-500/70 font-mono">
-            Exit
-          </span>
+          <MoreVertical className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 shrink-0" />
         </button>
       </div>
+
+      <AccountPanel
+        open={accountOpen}
+        onClose={() => setAccountOpen(false)}
+        userData={userData}
+        onLogout={handleLogout}
+      />
     </div>
   );
 }

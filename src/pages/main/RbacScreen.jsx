@@ -10,6 +10,7 @@ import {
   Check,
   CheckSquare,
   Square,
+  Mail,
 } from "lucide-react";
 import api from "../../api/axios";
 
@@ -29,8 +30,14 @@ const PERMISSION_TREE = [
   { id: "auditlog", label: "Audit", actions: ["add", "edit", "delete"] },
 ];
 
+const TOTAL_PERMISSIONS = PERMISSION_TREE.reduce(
+  (acc, item) => acc + 1 + (item.actions?.length || 0),
+  0
+);
+
 export default function RbacManagementPage() {
   const [roles, setRoles] = useState([]);
+  const [members, setMembers] = useState([]);
 
   // --- STATE MODAL ---
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -39,6 +46,9 @@ export default function RbacManagementPage() {
   const [usersCount, setUsersCount] = useState(0);
   const [selectedRoleId, setSelectedRoleId] = useState(null);
   const [selectedPermissions, setSelectedPermissions] = useState({});
+
+  // --- STATE POPUP USERS PER ROLE ---
+  const [usersRole, setUsersRole] = useState(null);
 
   // --- HANDLERS BULK CHECK / UNCHECK ALL ---
   const handleSelectAll = () => {
@@ -93,13 +103,27 @@ export default function RbacManagementPage() {
     });
   };
 
-  const formatPermissionSummary = (permObj) => {
-    if (!permObj) return "no access";
-    const keys = Object.keys(permObj).filter((k) => permObj[k]?.read);
-    if (keys.length === PERMISSION_TREE.length) return "all";
-    if (keys.length === 0) return "no access";
-    return keys.map((k) => `${k}.read`).join(" · ");
+  const countAllowedPermissions = (permObj) => {
+    if (!permObj) return 0;
+    return PERMISSION_TREE.reduce((acc, item) => {
+      const featurePerm = permObj[item.id];
+      if (!featurePerm?.read) return acc;
+      const actionsAllowed = item.actions
+        ? item.actions.filter((act) => featurePerm[act]).length
+        : 0;
+      return acc + 1 + actionsAllowed;
+    }, 0);
   };
+
+  const formatPermissionSummary = (permObj) => {
+    const allowed = countAllowedPermissions(permObj);
+    if (allowed === 0) return "No access";
+    if (allowed === TOTAL_PERMISSIONS) return "Full access";
+    return `${allowed} / ${TOTAL_PERMISSIONS}`;
+  };
+
+  const getUsersForRole = (roleId) => members.filter((m) => m.idRole === roleId);
+  const getUsersCountForRole = (roleId) => getUsersForRole(roleId).length;
 
   // --- MODAL ACTIONS ---
   const handleOpenCreateModal = () => {
@@ -167,8 +191,18 @@ export default function RbacManagementPage() {
     }
   };
 
+  const fetchMembers = async () => {
+    try {
+      const response = await api.get("/user/members");
+      setMembers(response.data.data);
+    } catch (error) {
+      console.error("Error fetching members:", error);
+    }
+  };
+
   useEffect(() => {
     fetchRole();
+    fetchMembers();
   }, []);
 
   return (
@@ -176,12 +210,9 @@ export default function RbacManagementPage() {
       {/* HEADER PAGE */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-white tracking-tight">
-            RBAC Management
+          <h1 className="text-2xl font-semibold text-white tracking-tight flex items-center gap-2.5">
+            <Shield className="w-6 h-6 text-blue-500" /> Role Management
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Role-based access control policies
-          </p>
         </div>
         <button
           onClick={handleOpenCreateModal}
@@ -193,73 +224,76 @@ export default function RbacManagementPage() {
       </div>
 
       {/* SECTION: ROLES (LIST VIEW) */}
-      <div className="bg-[#0b0f17] border border-slate-800/80 rounded-xl p-5 shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-            Roles Management
-          </h2>
-          <span className="text-[10px] text-slate-500">
-            {roles.length} roles
+      <div className="bg-[#0b0f17] border border-slate-800/80 rounded-xl overflow-hidden shadow-xl">
+        <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+            Total Roles: {roles.length}
           </span>
         </div>
 
-        {/* LIST HEADER */}
-        <div className="hidden md:flex items-center gap-4 px-3 pb-2 mb-1 border-b border-slate-800/60 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-          <span className="flex-1">Role</span>
-          <span className="w-56">Permissions</span>
-          <span className="w-20 text-right">Users</span>
-          <span className="w-16 text-right">Actions</span>
-        </div>
-
-        <div className="divide-y divide-slate-800/50">
-          {roles.length === 0 ? (
-            <div className="py-8 text-center text-slate-500 text-xs">
-              Belum ada role.
-            </div>
-          ) : (
-            roles.map((role) => (
-              <div
-                key={role.id}
-                className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 py-3 px-3 hover:bg-[#0e1420] group transition-colors"
-              >
-                {/* Role name */}
-                <div className="flex items-center gap-3 flex-1 overflow-hidden">
-                  <div className="w-6 h-6 rounded-md bg-[#162032] border border-slate-700/50 flex items-center justify-center shrink-0">
-                    <Shield className="w-3.5 h-3.5 text-blue-400" />
-                  </div>
-                  <h3 className="text-xs font-semibold text-white truncate">
-                    {role.name}
-                  </h3>
-                </div>
-
-                {/* Permissions summary */}
-                <p className="w-full md:w-56 text-[11px] font-mono text-slate-500 truncate">
-                  {formatPermissionSummary(role.permissions)}
-                </p>
-
-                {/* Users count */}
-                <span className="w-full md:w-20 text-[11px] text-slate-400 font-medium md:text-right">
-                  {role.usersCount} users
-                </span>
-
-                {/* Actions */}
-                <div className="w-full md:w-16 flex items-center gap-1 md:justify-end opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => handleOpenEditModal(role)}
-                    className="p-1 hover:text-blue-400 text-slate-500 transition-colors"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteRole(role.id)}
-                    className="p-1 hover:text-rose-400 text-slate-500 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-slate-400">
+            <thead className="bg-[#0e1420] text-slate-400 font-semibold border-b border-slate-800/80">
+              <tr>
+                <th className="p-3.5">Role</th>
+                <th className="p-3.5">Permissions</th>
+                <th className="p-3.5">Users</th>
+                <th className="p-3.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/50">
+              {roles.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-6 text-slate-500">
+                    Belum ada role.
+                  </td>
+                </tr>
+              ) : (
+                roles.map((role) => (
+                  <tr key={role.id} className="hover:bg-[#101622]/50 transition-colors">
+                    <td className="p-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-md bg-[#162032] border border-slate-700/50 flex items-center justify-center shrink-0">
+                          <Shield className="w-3.5 h-3.5 text-blue-400" />
+                        </div>
+                        <span className="font-semibold text-white">{role.name}</span>
+                      </div>
+                    </td>
+                    <td className="p-3.5 font-mono text-slate-300">
+                      {formatPermissionSummary(role.permissions)}
+                    </td>
+                    <td className="p-3.5">
+                      <button
+                        type="button"
+                        onClick={() => setUsersRole(role)}
+                        title="Lihat user dengan role ini"
+                        className="group flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-800 bg-[#121824] hover:bg-blue-950/40 hover:border-blue-800/60 text-slate-300 hover:text-blue-300 text-[11px] font-mono transition-colors"
+                      >
+                        <UserCheck className="w-3 h-3 text-slate-500 group-hover:text-blue-400 transition-colors" />
+                        {getUsersCountForRole(role.id)}
+                      </button>
+                    </td>
+                    <td className="p-3.5 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleOpenEditModal(role)}
+                          className="p-1 hover:text-blue-400 text-slate-500 transition-colors"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRole(role.id)}
+                          className="p-1 hover:text-rose-400 text-slate-500 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -467,6 +501,61 @@ export default function RbacManagementPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* POPUP: USERS USING THIS ROLE */}
+      {/* ========================================================================= */}
+      {usersRole && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-[#0b1017] border border-slate-800/90 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[80vh] flex flex-col">
+            <div className="p-5 flex items-start justify-between border-b border-slate-800/80 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[#111823] border border-slate-700/50 flex items-center justify-center text-slate-300">
+                  <UserCheck className="w-4 h-4 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white">
+                    Users with role "{usersRole.name}"
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {getUsersCountForRole(usersRole.id)} user(s)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setUsersRole(null)}
+                className="text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 overflow-y-auto custom-scrollbar divide-y divide-slate-800/50">
+              {getUsersForRole(usersRole.id).length === 0 ? (
+                <div className="py-8 text-center text-slate-500 text-xs">
+                  Belum ada user dengan role ini.
+                </div>
+              ) : (
+                getUsersForRole(usersRole.id).map((u) => (
+                  <div key={u.id} className="flex items-center gap-3 p-2.5">
+                    <div className="w-8 h-8 rounded-full bg-blue-950/60 border border-blue-800/40 flex items-center justify-center text-blue-300 text-xs font-bold shrink-0">
+                      {(u.fullName || "?").charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-white truncate">
+                        {u.fullName || "-"}
+                      </div>
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1 truncate">
+                        <Mail className="w-3 h-3 text-slate-600 shrink-0" /> {u.email || "-"}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}

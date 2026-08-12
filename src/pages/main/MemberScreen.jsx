@@ -10,7 +10,7 @@ import {
   User,
   Phone,
   Lock,
-  MapPin,
+  Send,
   Building2,
   ShieldCheck
 } from "lucide-react";
@@ -35,7 +35,7 @@ export default function MembersPage() {
     idRole: "",
     tenant: [],
     pin: "",
-    address: ""
+    telegramId: ""
   });
 
   // Fetch Semua Data Utama
@@ -79,7 +79,7 @@ export default function MembersPage() {
       idRole: roles.length > 0 ? roles[0].id : "",
       tenant: [],
       pin: "",
-      address: ""
+      telegramId: ""
     });
     setIsModalOpen(true);
   };
@@ -94,7 +94,7 @@ export default function MembersPage() {
       idRole: member.idRole || "",
       tenant: member.tenant ? member.tenant.split(",").filter(Boolean) : [],
       pin: member.pin || "",
-      address: member.address || ""
+      telegramId: member.telegramId || ""
     });
     setIsModalOpen(true);
   };
@@ -108,7 +108,7 @@ export default function MembersPage() {
       idRole: formData.idRole,
       tenant: formData.tenant.join(","),
       pin: formData.pin,
-      address: formData.address
+      telegramId: formData.telegramId
     };
     try {
       if(modalMode === "create") {
@@ -125,12 +125,12 @@ export default function MembersPage() {
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("Apakah Anda yakin ingin menghapus member ini?")) {
+    if (window.confirm("Apakah Anda yakin ingin menghapus user ini?")) {
       try {
         await api.delete(`/user/members/${id}`);
         fetchData();
       } catch (err) {
-        console.error("Gagal menghapus member:", err);
+        console.error("Gagal menghapus user:", err);
       }
     }
   };
@@ -147,25 +147,22 @@ export default function MembersPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-white tracking-tight flex items-center gap-2.5">
-            <Users className="w-6 h-6 text-blue-500" /> Member Management
+            <Users className="w-6 h-6 text-blue-500" /> User Management
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Kelola pengguna, penetapan role, dan akses tenant
-          </p>
         </div>
         <button
           onClick={handleOpenCreateModal}
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-md shadow-blue-600/20 transition-all cursor-pointer"
         >
-          <Plus className="w-4 h-4" /> Add Member
+          <Plus className="w-4 h-4" /> Add User
         </button>
       </div>
 
-      {/* MEMBER TABLE */}
+      {/* USER TABLE */}
       <div className="bg-[#0b0f17] border border-slate-800/80 rounded-xl overflow-hidden shadow-xl">
         <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
           <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-            Total Members: {members.length}
+            Total Users: {members.length}
           </span>
         </div>
 
@@ -190,7 +187,7 @@ export default function MembersPage() {
               ) : members.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="text-center py-6 text-slate-500">
-                    Belum ada member terdaftar.
+                    Belum ada user terdaftar.
                   </td>
                 </tr>
               ) : (
@@ -260,7 +257,7 @@ export default function MembersPage() {
             <div className="p-4 border-b border-slate-800/80 flex items-center justify-between shrink-0">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                 <Users className="w-4 h-4 text-blue-400" />
-                {modalMode === "create" ? "Add New Member" : "Edit Member"}
+                {modalMode === "create" ? "Add New User" : "Edit User"}
               </h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-slate-300">
                 <X className="w-4 h-4" />
@@ -270,21 +267,23 @@ export default function MembersPage() {
             {/* MODAL BODY */}
             <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1 custom-scrollbar text-xs">
               
-              {/* Full Name & Email */}
+              {/* Full Name */}
+              <div className="space-y-1">
+                <label className="text-slate-400 font-medium flex items-center gap-1">
+                  <User className="w-3 h-3" /> Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.fullName}
+                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                  className="w-full bg-[#111722] border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
+                  placeholder="e.g. John Doe"
+                />
+              </div>
+
+              {/* Email & Password */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-slate-400 font-medium flex items-center gap-1">
-                    <User className="w-3 h-3" /> Full Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.fullName}
-                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    className="w-full bg-[#111722] border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
-                    placeholder="e.g. John Doe"
-                  />
-                </div>
                 <div className="space-y-1">
                   <label className="text-slate-400 font-medium flex items-center gap-1">
                     <Mail className="w-3 h-3" /> Email
@@ -298,22 +297,6 @@ export default function MembersPage() {
                     placeholder="john@prima.id"
                   />
                 </div>
-              </div>
-
-              {/* Phone & PIN */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-slate-400 font-medium flex items-center gap-1">
-                    <Phone className="w-3 h-3" /> Phone
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full bg-[#111722] border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
-                    placeholder="+62812345678"
-                  />
-                </div>
                 <div className="space-y-1">
                   <label className="text-slate-400 font-medium flex items-center gap-1">
                     <Lock className="w-3 h-3" /> Password
@@ -324,6 +307,34 @@ export default function MembersPage() {
                     onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
                     className="w-full bg-[#111722] border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
                     placeholder="Password"
+                  />
+                </div>
+              </div>
+
+              {/* Telegram ID & Phone */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-medium flex items-center gap-1">
+                    <Send className="w-3 h-3" /> Telegram ID
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.telegramId}
+                    onChange={(e) => setFormData({ ...formData, telegramId: e.target.value })}
+                    className="w-full bg-[#111722] border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
+                    placeholder="e.g. 123456789"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-medium flex items-center gap-1">
+                    <Phone className="w-3 h-3" /> Phone
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    className="w-full bg-[#111722] border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
+                    placeholder="+62812345678"
                   />
                 </div>
               </div>
@@ -384,20 +395,6 @@ export default function MembersPage() {
                 </div>
               </div>
 
-              {/* Address */}
-              <div className="space-y-1">
-                <label className="text-slate-400 font-medium flex items-center gap-1">
-                  <MapPin className="w-3 h-3" /> Address
-                </label>
-                <textarea
-                  rows={2}
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full bg-[#111722] border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
-                  placeholder="Enter address..."
-                />
-              </div>
-
               {/* FOOTER */}
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800/60 shrink-0">
                 <button
@@ -411,7 +408,7 @@ export default function MembersPage() {
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20"
                 >
-                  {modalMode === "create" ? "Save Member" : "Update Member"}
+                  {modalMode === "create" ? "Save User" : "Update User"}
                 </button>
               </div>
             </form>

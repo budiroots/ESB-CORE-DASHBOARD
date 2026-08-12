@@ -30,26 +30,6 @@ function Layout() {
       {/* Area Konten Utama (Otomatis mengambil full width jika Sidebar di-hide) */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         
-        {/* Top Navbar */}
-        <header className="h-16 bg-[#06090e]  border-b  flex items-center justify-between px-8 shrink-0">
-          {/* <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold bg-slate-100 text-slate-500 px-2 py-1 rounded">
-              System ID: PK-MON-01
-            </span>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            {!licenseInfo?.isValid && (
-              <span className="text-xs font-bold bg-red-100 text-red-600 px-2.5 py-1 rounded-full animate-pulse">
-                License Expired
-              </span>
-            )}
-            <button className="p-2 text-slate-400 hover:text-blue-600 transition-colors">
-              <span>🔔</span>
-            </button>
-          </div> */}
-        </header>
-
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar relative">
           {licenseInfo?.isValid === false ? (

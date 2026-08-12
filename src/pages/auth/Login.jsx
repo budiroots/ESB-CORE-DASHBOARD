@@ -269,7 +269,7 @@ const Login = () => {
       <form onSubmit={handleSubmit} noValidate autoComplete="on" style={styles.card}>
         <div style={styles.brand}>
           <div style={styles.logoRow}>
-              <img src={logo} alt="Logo" style={{ width: "140px", height: "55px" }} />
+              <img src={logo} alt="Logo" style={{ height: "36px", width: "auto", maxWidth: "100%", objectFit: "contain" }} />
           </div>
           <h1 style={styles.title}>Log in to your account</h1>
           <p style={styles.subtitle}>
@@ -377,7 +377,7 @@ const Login = () => {
         </button>
 
         <p style={styles.footer}>
-          &copy; 2026 Enterprise Service Bus Designer. <br /> All rights reserved.
+          &copy; 2026 PrimaSphere. <br /> All rights reserved.
         </p>
       </form>
     </section>

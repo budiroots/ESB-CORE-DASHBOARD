@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 import Login from "./pages/auth/Login";
 import Layout from "./components/Layout";
@@ -14,7 +14,13 @@ import AppScreen from "./pages/main/AppsScreen";
 import MarketplaceScreen from "./pages/main/MarketplaceScreen";
 import RbacScreen from "./pages/main/RbacScreen";
 import TenantsScreen from "./pages/main/TenantsScreen";
-import SettingsScreen from "./pages/main/SettingsScreen";
+import SettingsLayout from "./pages/main/settings/SettingsLayout";
+import SmtpSettings from "./pages/main/settings/SmtpSettings";
+import TelegramSettings from "./pages/main/settings/TelegramSettings";
+import OfflineReminderSettings from "./pages/main/settings/OfflineReminderSettings";
+import BrandingSettings from "./pages/main/settings/BrandingSettings";
+import SecuritySettings from "./pages/main/settings/SecuritySettings";
+import AuditLogRetentionSettings from "./pages/main/settings/AuditLogRetentionSettings";
 
 // import Dashboard from "./pages/admin/Dashboard";
 // import Canvas from "./pages/admin/Canvas";
@@ -52,7 +58,6 @@ function App() {
           <Route path="settings/members" element={<MemberScreen />} />
           <Route path="firewall/:id" element={<FirewallSecurity />} />
           <Route path="setting/:id" element={<SiteSettingScreen />} />
-          <Route path="settings/license" element={<LicenseManagement />} />
 
           <Route path="dashboard" element={<DashboardPrimacom />} />
           <Route path="traffic" element={<TrafficScreen />} />
@@ -68,7 +73,17 @@ function App() {
           <Route path="auditlog" element={<AuditTrailPage />} />
 
           <Route path="tenants" element={<TenantsScreen />} />
-          <Route path="settings" element={<SettingsScreen />} />
+
+          <Route path="settings" element={<SettingsLayout />}>
+            <Route index element={<Navigate to="license" replace />} />
+            <Route path="license" element={<LicenseManagement />} />
+            <Route path="general/security" element={<SecuritySettings />} />
+            <Route path="general/audit-log" element={<AuditLogRetentionSettings />} />
+            <Route path="notifications/smtp" element={<SmtpSettings />} />
+            <Route path="notifications/telegram" element={<TelegramSettings />} />
+            <Route path="notifications/offline-reminder" element={<OfflineReminderSettings />} />
+            <Route path="appearance/branding" element={<BrandingSettings />} />
+          </Route>
 
         </Route>
       </Routes>
